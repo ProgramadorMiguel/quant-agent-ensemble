@@ -1,0 +1,3 @@
+Please quote a GBP interest rate swap. Notional GBP 5,000,000. We pay the fixed
+leg at 4.20% and receive 6M SONIA. Effective 2027-01-04, maturity 2030-01-04.
+Discounting off GBP-SONIA, forecasting off GBP-SONIA-6M.

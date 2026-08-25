@@ -1,0 +1,15 @@
+{
+  "rfq_id": "c8b1921180e5418d96388f4b63bc5aa1",
+  "irs": {
+    "notional": 25000000.0,
+    "currency": "USD",
+    "direction": "RECEIVER_FIXED",
+    "effective_date": "2026-10-15",
+    "maturity_date": "2036-10-15",
+    "fixed_rate": 0.0385,
+    "floating_index": "SOFR",
+    "floating_tenor": "3M",
+    "discount_curve": "USD-SOFR",
+    "forwarding_curve": "USD-SOFR-3M"
+  }
+}

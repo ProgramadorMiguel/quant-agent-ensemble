@@ -1,0 +1,3 @@
+Short dated USD swap request. We would pay fixed 4.55% on a notional of
+USD 100,000,000 against 1M SOFR. Start date 2026-09-30, final maturity
+2028-09-30. Use USD-SOFR for discounting and USD-SOFR-1M for forwarding.

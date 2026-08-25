@@ -5,6 +5,7 @@ from time import perf_counter
 
 from openai import OpenAI
 
+from agent_config import AgentsConfig, load_agents_config
 from evaluation.telemetry import TelemetryStore
 from models.irs_fields import IRSFields
 from proto.proto_mapper import parse_irs_textproto
@@ -12,24 +13,34 @@ from settings import Settings
 
 
 class LLMClient:
-    def __init__(self, settings: Settings, project_root: Path, run_id: str):
+    """Executes the agent pipeline declared in config/agents.yaml."""
+
+    def __init__(
+        self,
+        settings: Settings,
+        project_root: Path,
+        run_id: str,
+        config: AgentsConfig | None = None,
+    ):
         self.client = OpenAI(api_key=settings.openai_api_key)
-        self.model = settings.llm_model
         self.project_root = project_root
         self.run_id = run_id
+        self.config = config or load_agents_config(project_root)
+        self.model = settings.llm_model or self.config.model
         self.telemetry = TelemetryStore(project_root / "outputs/evaluations.db")
 
-    def _read(self, relative_path: str) -> str:
-        return (self.project_root / relative_path).read_text(encoding="utf-8")
+    def _system_prompt(self, agent: str) -> str:
+        return self.config.spec(agent).system_prompt(self.project_root)
 
-    def _call(self, agent: str, system: str, user: str) -> str:
+    def _call(self, agent: str, user: str) -> str:
+        system = self._system_prompt(agent)
         started = perf_counter()
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[{"role": "system", "content": system},
                           {"role": "user", "content": user}],
-                temperature=0,
+                temperature=self.config.temperature,
             )
             content = response.choices[0].message.content
             if not content:
@@ -53,22 +64,17 @@ class LLMClient:
             raise
 
     def classify_product(self, prompt: str) -> str:
-        result = self._call("orchestrator", self._read("agents/orchestrator_agent.md"), prompt)
+        result = self._call("orchestrator", prompt)
         if result not in {"IRS", "UNSUPPORTED"}:
             raise RuntimeError(f"Invalid product classification: {result!r}")
         return result
 
     def extract_irs(self, prompt: str) -> IRSFields:
-        system = self._read("agents/product_specialist_agent.md")
-        system += "\n\n# Product skill\n" + self._read("skills/irs_extraction_skill.md")
-        system += "\n\n# pricing.proto\n" + self._read("protos/pricing.proto")
-        proto_text = self._call("product_specialist", system, prompt)
+        proto_text = self._call("product_specialist", prompt)
         return parse_irs_textproto(proto_text, self.project_root / "protos/pricing.proto")
 
     def generate_proto_text(self, validated_fields: IRSFields, rfq_id: str) -> str:
-        system = self._read("agents/rfq_proto_agent.md")
-        system += "\n\n# pricing.proto\n" + self._read("protos/pricing.proto")
         field_lines = [f"rfq_id: {rfq_id}", "Validated IRS fields:"]
         field_lines.extend(f"{key}: {value}" for key, value in
                            validated_fields.model_dump(mode="json").items())
-        return self._call("rfq_proto", system, "\n".join(field_lines))
+        return self._call("rfq_proto", "\n".join(field_lines))

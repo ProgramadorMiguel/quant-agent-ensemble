@@ -1,0 +1,13 @@
+rfq_id: "75dc9b98b23044fe8017ee69de36ceb9"
+irs {
+  notional: 50000000.0
+  currency: "EUR"
+  direction: RECEIVER_FIXED
+  effective_date: "2027-03-01"
+  maturity_date: "2034-03-01"
+  fixed_rate: 0.021
+  floating_index: "EURIBOR"
+  floating_tenor: "3M"
+  discount_curve: "EUR-OIS"
+  forwarding_curve: "EUR-EURIBOR-3M"
+}

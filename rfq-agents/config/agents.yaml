@@ -1,0 +1,60 @@
+# Configuración de la red de agentes
+#
+# Este fichero es la única declaración del pipeline. El código (src/llm_client.py)
+# lo lee en tiempo de ejecución: no hay rutas de agentes incrustadas en Python.
+# Añadir o reordenar agentes se hace aquí, no en el código.
+#
+# Cada agente se compone de:
+#   instructions  fichero Markdown con el rol y las instrucciones del agente
+#   skill         (opcional) conocimiento de producto que se adjunta al prompt
+#   schema        (opcional) esquema .proto que se adjunta al prompt
+#
+# El prompt de sistema de cada agente se construye concatenando, en este orden:
+# instructions + skill + schema.
+
+version: 1
+
+# Modelo por defecto. Se puede sobreescribir con LLM_MODEL en .env o con
+# --models en el evaluador.
+model: gpt-4.1-mini
+
+# Parámetros de muestreo. temperature 0 busca reproducibilidad en OpenAI.
+# Nota: los modelos Claude actuales no aceptan este parámetro.
+sampling:
+  temperature: 0
+
+agents:
+
+  orchestrator:
+    name: Agente orquestador
+    description: >
+      Clasifica el producto financiero descrito por el usuario y decide si el
+      sistema puede tratarlo. No extrae campos ni valora.
+    instructions: agents/orchestrator_agent.md
+    outputs: Una etiqueta de producto (IRS) o UNSUPPORTED.
+
+  product_specialist:
+    name: Agente especialista de producto
+    description: >
+      Extrae los términos del producto a partir del texto libre, siguiendo el
+      skill de producto que se le adjunta. No valida ni valora.
+    instructions: agents/product_specialist_agent.md
+    skill: skills/irs_extraction_skill.md
+    schema: protos/pricing.proto
+    outputs: Un mensaje InterestRateSwap en formato protobuf de texto.
+
+  rfq_proto:
+    name: Agente generador de RFQ
+    description: >
+      Serializa los campos ya validados al mensaje RFQ definido por el esquema.
+      Copia valores, no infiere nada.
+    instructions: agents/rfq_proto_agent.md
+    schema: protos/pricing.proto
+    outputs: Un mensaje RFQ en formato protobuf de texto.
+
+# Orden de ejecución. Entre product_specialist y rfq_proto se interpone la capa
+# de validación determinista, que es código Python y no un agente.
+pipeline:
+  - orchestrator
+  - product_specialist
+  - rfq_proto

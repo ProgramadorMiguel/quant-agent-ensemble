@@ -1,0 +1,13 @@
+rfq_id: "3909b00273c44113954549a0cb994661"
+irs {
+  notional: 7500000.0
+  currency: "EUR"
+  direction: PAYER_FIXED
+  effective_date: "2026-11-20"
+  maturity_date: "2036-11-20"
+  fixed_rate: 0.0295
+  floating_index: "EURIBOR"
+  floating_tenor: "6M"
+  discount_curve: "EUR-OIS"
+  forwarding_curve: "EUR-EURIBOR-6M"
+}

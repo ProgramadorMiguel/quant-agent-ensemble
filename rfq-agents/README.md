@@ -82,3 +82,40 @@ for later comparison. RFQs and expected financial structures remain protobuf
 text format; JSON is not used as an interchange format.
 Each evaluation also writes a report named `<case>__<model>.result.txt` next to
 the case under `evaluation/cases`, making the model explicit in every result.
+
+## Agent configuration
+
+The agent network is declared in `config/agents.yaml`. That file is the single
+source of truth for the pipeline: each agent lists its Markdown instruction
+file, its optional product skill and its optional `.proto` schema, and the
+`pipeline` key fixes the execution order. `src/llm_client.py` reads it at
+runtime, so adding or reordering agents does not require touching Python.
+
+The system prompt of each agent is built as
+`instructions + skill + schema`, in that order.
+
+The deterministic validation layer sits between `product_specialist` and
+`rfq_proto`. It is Python, not an agent, and is therefore not listed in the
+pipeline.
+
+## Sample RFQs
+
+`samples/` holds RFQs produced end to end by the agent network from the prompts
+in `examples/`. Each valid request yields two files:
+
+- `<case>.textproto` — the RFQ as protobuf text format. This is the artefact the
+  system produces and the one a pricing engine consumes.
+- `<case>.json` — the canonical JSON projection of the same message, generated
+  with `json_format.MessageToJson`. Provided for readability only; JSON is not
+  an interchange format in this project.
+
+Prompts that omit required terms produce `<case>.rejected.txt` instead,
+reporting which fields were missing. No RFQ is emitted.
+
+Regenerate the whole set with:
+
+```powershell
+python src/generate_batch.py
+```
+
+Optional flags: `--prompts <dir>`, `--out <dir>`, `--model <model>`.

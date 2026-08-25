@@ -5,7 +5,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from google.protobuf import text_format
+from google.protobuf import json_format, text_format
 from grpc_tools import protoc
 
 from models.irs_fields import IRSFields
@@ -81,3 +81,11 @@ def parse_irs_textproto(proto_text: str, proto_path: Path) -> IRSFields:
         "discount_curve": present("discount_curve"),
         "forwarding_curve": present("forwarding_curve"),
     })
+
+
+def textproto_to_json(proto_text: str, proto_path: Path) -> str:
+    """Canonical JSON projection of an RFQ. The protobuf text remains the source."""
+    pb = _load_pricing_module(proto_path)
+    message = pb.RFQ()
+    text_format.Parse(proto_text, message)
+    return json_format.MessageToJson(message, indent=2, preserving_proto_field_name=True)

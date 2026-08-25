@@ -1,0 +1,13 @@
+rfq_id: "9c426b3eef7a4ae7a11a3c027d8a198c"
+irs {
+  notional: 5000000.0
+  currency: "GBP"
+  direction: PAYER_FIXED
+  effective_date: "2027-01-04"
+  maturity_date: "2030-01-04"
+  fixed_rate: 0.042
+  floating_index: "SONIA"
+  floating_tenor: "6M"
+  discount_curve: "GBP-SONIA"
+  forwarding_curve: "GBP-SONIA-6M"
+}

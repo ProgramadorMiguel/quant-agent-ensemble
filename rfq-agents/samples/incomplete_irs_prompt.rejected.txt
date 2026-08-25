@@ -1,0 +1,4 @@
+product_type: IRS
+validation_status: INVALID
+missing_fields: floating_index, floating_tenor, discount_curve, forwarding_curve
+errors: none

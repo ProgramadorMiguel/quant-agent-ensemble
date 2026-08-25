@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 @dataclass(frozen=True)
 class Settings:
     openai_api_key: str
-    llm_model: str
+    llm_model: str | None
 
 
 def get_settings() -> Settings:
@@ -21,6 +21,6 @@ def get_settings() -> Settings:
         )
     return Settings(
         openai_api_key=api_key,
-        llm_model=os.getenv("LLM_MODEL", "gpt-4.1-mini").strip() or "gpt-4.1-mini",
+        llm_model=os.getenv("LLM_MODEL", "").strip() or None,
     )
 
