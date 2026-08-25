@@ -1,2 +1,0 @@
-Hacer comparación de 3 agentes vs 1 agente para ver cual es más eficiente y documentarlo.
-Si no funciona quantlib con C++, que por lo que dice la IA puede ser un dolor de cabeza, hacerlo con la quantlib de Python.
