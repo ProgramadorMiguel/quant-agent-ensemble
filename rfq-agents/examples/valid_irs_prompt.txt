@@ -1,0 +1,5 @@
+Generate an RFQ for a vanilla EUR interest rate swap with notional EUR 10,000,000.
+We pay fixed at 2.75% and receive 6M EURIBOR. The effective date is 2026-09-01
+and the maturity date is 2031-09-01. Use EUR-OIS as the discount curve and
+EUR-EURIBOR-6M as the forwarding curve.
+

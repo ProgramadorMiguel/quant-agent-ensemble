@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package pricing;
+
+message RFQ {
+  string rfq_id = 1;
+  InterestRateSwap irs = 2;
+}
+
+message InterestRateSwap {
+  enum Direction {
+    DIRECTION_UNSPECIFIED = 0;
+    PAYER_FIXED = 1;
+    RECEIVER_FIXED = 2;
+  }
+
+  optional double notional = 1;
+  optional string currency = 2;
+  optional Direction direction = 3;
+  optional string effective_date = 4;
+  optional string maturity_date = 5;
+  optional double fixed_rate = 6;
+  optional string floating_index = 7;
+  optional string floating_tenor = 8;
+  optional string discount_curve = 9;
+  optional string forwarding_curve = 10;
+}
