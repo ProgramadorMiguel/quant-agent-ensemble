@@ -1,0 +1,4 @@
+Buenas, queremos precio de un swap de tipo de interes a 10 anos en EUR. Nominal
+de 7.500.000 euros, pagamos el fijo al 2.95% y recibimos EURIBOR a 6 meses.
+Efectiva el 2026-11-20 y vencimiento el 2036-11-20. Curva de descuento EUR-OIS,
+curva forward EUR-EURIBOR-6M.

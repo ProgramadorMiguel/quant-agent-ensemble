@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from hashlib import sha256
 from pathlib import Path
 from time import perf_counter
 
 from openai import OpenAI
 
 from agent_config import AgentsConfig, load_agents_config
+from evaluation.costs import cost_of
 from evaluation.telemetry import TelemetryStore
 from models.irs_fields import IRSFields
 from proto.proto_mapper import parse_irs_textproto
@@ -34,6 +36,9 @@ class LLMClient:
 
     def _call(self, agent: str, user: str) -> str:
         system = self._system_prompt(agent)
+        # Identifies the exact agent instructions used, so a result recorded today
+        # can still be attributed to a prompt version months from now.
+        prompt_hash = sha256(system.encode("utf-8")).hexdigest()[:12]
         started = perf_counter()
         try:
             response = self.client.chat.completions.create(
@@ -46,13 +51,16 @@ class LLMClient:
             if not content:
                 raise RuntimeError("OpenAI returned an empty response")
             usage = response.usage
+            input_tokens = getattr(usage, "prompt_tokens", None)
+            output_tokens = getattr(usage, "completion_tokens", None)
             self.telemetry.record_call(
                 run_id=self.run_id, agent=agent, model=self.model,
                 latency_ms=(perf_counter() - started) * 1000, status="SUCCESS",
                 request_text=user, response_text=content,
-                input_tokens=getattr(usage, "prompt_tokens", None),
-                output_tokens=getattr(usage, "completion_tokens", None),
+                input_tokens=input_tokens, output_tokens=output_tokens,
                 total_tokens=getattr(usage, "total_tokens", None),
+                provider="openai", prompt_hash=prompt_hash,
+                cost_usd=cost_of(self.project_root, self.model, input_tokens, output_tokens),
             )
             return content.strip()
         except Exception as exc:
@@ -60,6 +68,7 @@ class LLMClient:
                 run_id=self.run_id, agent=agent, model=self.model,
                 latency_ms=(perf_counter() - started) * 1000, status="ERROR",
                 request_text=user, error_text=f"{type(exc).__name__}: {exc}",
+                provider="openai", prompt_hash=prompt_hash,
             )
             raise
 

@@ -119,3 +119,30 @@ python src/generate_batch.py
 ```
 
 Optional flags: `--prompts <dir>`, `--out <dir>`, `--model <model>`.
+
+## Evaluation and metrics
+
+Golden cases live in `evaluation/cases/` as a `.prompt.txt` / `.expected.textproto`
+pair. Run the agent network against all of them:
+
+```powershell
+python src/evaluate.py --models gpt-4.1-mini
+python src/evaluate.py --models gpt-4.1-mini gpt-4.1 --repetitions 5
+```
+
+Every field is classified as `MATCH`, `WRONG` (a value was extracted but is not
+the expected one), `MISSING` (stated in the prompt, dropped by the model) or
+`HALLUCINATED` (never stated, invented by the model). Keeping those four apart is
+what turns "94% accuracy" into a diagnosis.
+
+Results accumulate in `outputs/evaluations.db`. Print the comparison with:
+
+```powershell
+python src/report.py
+```
+
+The report covers per-model accuracy with 95% Wilson confidence intervals, the
+per-field failure breakdown, cost and latency per agent, run-to-run stability
+across repetitions, and a paired McNemar test when two or more models share
+cases. Model prices are declared in `config/model_costs.toml`; unverified entries
+are flagged in the report rather than silently trusted.

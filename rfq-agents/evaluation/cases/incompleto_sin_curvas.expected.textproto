@@ -1,0 +1,6 @@
+notional: 5000000
+currency: "EUR"
+direction: PAYER_FIXED
+effective_date: "2026-09-01"
+maturity_date: "2031-09-01"
+fixed_rate: 0.026

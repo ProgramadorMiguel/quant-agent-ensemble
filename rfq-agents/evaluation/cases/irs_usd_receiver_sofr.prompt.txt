@@ -1,0 +1,4 @@
+Necesitamos cotizacion para un swap de tipos en dolares por importe nominal de
+USD 25,000,000. El cliente recibe fijo al 3.85% y paga SOFR a 3 meses. Fecha de
+inicio 2026-10-15 y vencimiento 2036-10-15. Curva de descuento USD-SOFR y curva
+de proyeccion USD-SOFR-3M.

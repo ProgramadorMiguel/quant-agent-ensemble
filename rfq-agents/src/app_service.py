@@ -16,6 +16,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 @dataclass(frozen=True)
 class RFQGenerationResult:
+    run_id: str
     product_type: str
     extracted_fields: dict[str, Any]
     validation_status: str
@@ -40,6 +41,7 @@ def generate_rfq_from_prompt(
     product_type = client.classify_product(prompt)
     if product_type != "IRS":
         return RFQGenerationResult(
+            run_id=run_id,
             product_type=product_type,
             extracted_fields={},
             validation_status="NOT_RUN",
@@ -59,6 +61,7 @@ def generate_rfq_from_prompt(
     field_dict = fields.model_dump(mode="json")
     if not report.is_valid:
         return RFQGenerationResult(
+            run_id=run_id,
             product_type=product_type,
             extracted_fields=field_dict,
             validation_status="INVALID",
@@ -77,6 +80,7 @@ def generate_rfq_from_prompt(
     output_path = output_dir / f"rfq_{run_id}.textproto"
     output_path.write_text(proto_text, encoding="utf-8")
     return RFQGenerationResult(
+        run_id=run_id,
         product_type=product_type,
         extracted_fields=field_dict,
         validation_status="VALID",

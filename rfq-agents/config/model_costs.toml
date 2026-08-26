@@ -1,0 +1,48 @@
+# Tarifas por millón de tokens, en dólares.
+#
+# IMPORTANTE: los precios cambian. Antes de publicar cualquier cifra de coste en
+# la memoria, verifica cada fila contra la página de precios del proveedor y
+# actualiza 'verified_on'. Citar este fichero en el anexo de la memoria.
+#
+#   openai.com/api/pricing
+#   anthropic.com/pricing
+
+verified_on = "2026-08-25"
+
+# --- OpenAI ---------------------------------------------------------------
+# PENDIENTE DE VERIFICAR: confirmar estos dos valores antes de usarlos.
+[models."gpt-4.1-mini"]
+provider = "openai"
+input_per_mtok = 0.40
+output_per_mtok = 1.60
+cached_input_per_mtok = 0.10
+verified = false
+
+[models."gpt-4.1"]
+provider = "openai"
+input_per_mtok = 2.00
+output_per_mtok = 8.00
+cached_input_per_mtok = 0.50
+verified = false
+
+# --- Anthropic ------------------------------------------------------------
+[models."claude-opus-5"]
+provider = "anthropic"
+input_per_mtok = 5.00
+output_per_mtok = 25.00
+cached_input_per_mtok = 0.50
+verified = true
+
+[models."claude-sonnet-5"]
+provider = "anthropic"
+input_per_mtok = 3.00
+output_per_mtok = 15.00
+cached_input_per_mtok = 0.30
+verified = true
+
+[models."claude-haiku-4-5"]
+provider = "anthropic"
+input_per_mtok = 1.00
+output_per_mtok = 5.00
+cached_input_per_mtok = 0.10
+verified = true
