@@ -58,6 +58,7 @@ ADDED_COLUMNS = {
         "wrong_fields": "INTEGER",
         "missing_fields_count": "INTEGER",
         "hallucinated_count": "INTEGER",
+        "proto_agent_status": "TEXT",   # MATCH / MISMATCH / UNPARSEABLE / NOT_RUN
         "cost_usd": "REAL",
     },
 }

@@ -133,14 +133,28 @@ modelo. Una petición que no supera esta capa **se detiene aquí** y no genera R
 | Salida | El mensaje `RFQ` completo en protobuf de texto |
 | Responsabilidad | Serializar al esquema, copiando valores sin transformarlos |
 
-Este agente tiene un estatus particular en el trabajo. Su salida se compara
-siempre contra la de un mapeador determinista (`fields_to_textproto`), que es la
-que el sistema utiliza realmente. El agente se conserva como **sujeto de medida**:
-la tasa de coincidencia entre ambos responde a una pregunta legítima — ¿es capaz
-un LLM de serializar correctamente contra un esquema que se le proporciona, o
-conviene dejar siempre el ensamblaje al código?
+Este agente tiene un estatus particular en el trabajo: **se ejecuta pero no se
+utiliza**. La RFQ que el sistema emite la produce siempre el mapeador
+determinista `fields_to_textproto`. La salida del agente se normaliza, se compara
+contra ella y se registra el resultado en uno de cuatro estados:
 
-Los datos de la sección 5 sugieren la respuesta.
+| Estado | Significado |
+|---|---|
+| `MATCH` | El agente produjo exactamente el mismo mensaje que el mapeador |
+| `MISMATCH` | Protobuf válido, pero distinto del de referencia |
+| `UNPARSEABLE` | La salida no es protobuf válido |
+| `NOT_RUN` | La validación detuvo el caso antes de llegar a esta etapa |
+
+Una discrepancia **no interrumpe la ejecución**: es un dato sobre el modelo, no
+un motivo para abortar una petición que ya tiene una RFQ correcta. `NOT_RUN` no
+computa en el denominador de la tasa de fidelidad, porque no es un fallo del
+agente.
+
+Esto convierte una pregunta legítima en una medición: ¿es capaz un LLM de
+serializar correctamente contra un esquema que se le proporciona, o conviene
+dejar siempre el ensamblaje al código? Los datos de coste de la sección 5 dan
+peso a la respuesta: si el agente acierta siempre, se puede defender; si falla,
+su coste no se justifica.
 
 ---
 

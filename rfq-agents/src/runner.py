@@ -26,6 +26,8 @@ def main() -> int:
     print(f"   Missing fields: {result.missing_fields or 'none'}")
     print(f"   Errors: {result.validation_errors or 'none'}")
     print(f"4. Generated RFQ protobuf path: {result.output_file_path or 'not generated'}")
+    print(f"5. Proto agent fidelity: {result.proto_agent.status}"
+          + (f" ({result.proto_agent.error})" if result.proto_agent.error else ""))
     return 0 if result.validation_status == "VALID" else 2
 
 

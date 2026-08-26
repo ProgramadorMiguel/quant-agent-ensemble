@@ -187,7 +187,8 @@ sea idéntica byte a byte a `fields_to_textproto(...)`. Si debe ser idéntica al
 mapper determinista, el agente no aporta nada y solo añade un modo de fallo y un
 coste. Un tribunal lo va a señalar.
 
-Decisión propuesta: **el mapper determinista pasa a ser la verdad del sistema**
+Decisión tomada e **implementada el 2026-08-26**: **el mapper determinista es la
+verdad del sistema**
 (es el que produce el RFQ que se valora), y el agente proto se conserva como
 **sujeto de medida**. En cada ejecución se lanzan ambos y se registra si
 coinciden. Eso convierte el tercer agente en un KPI —*fidelidad de

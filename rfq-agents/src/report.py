@@ -74,6 +74,32 @@ def report_fields(store: TelemetryStore) -> None:
             print(f"   {field:<20} {outcome:<14} {count:>3} de {totals[model][field]}")
 
 
+def report_proto_fidelity(store: TelemetryStore) -> None:
+    rows = store.query("""
+        SELECT model, proto_agent_status, COUNT(*)
+        FROM evaluation_runs WHERE proto_agent_status IS NOT NULL
+        GROUP BY model, proto_agent_status ORDER BY model
+    """)
+    if not rows:
+        return
+    rule("Fidelidad de serialización del agente proto")
+    per_model: dict[str, dict[str, int]] = defaultdict(dict)
+    for model, status, count in rows:
+        per_model[model][status] = count
+    for model, counts in per_model.items():
+        # NOT_RUN = la validacion detuvo el caso antes de llegar al agente. No es
+        # un fallo suyo, asi que queda fuera del denominador.
+        ran = sum(count for status, count in counts.items() if status != "NOT_RUN")
+        match = counts.get("MATCH", 0)
+        detail = "  ".join(f"{k}={v}" for k, v in sorted(counts.items()) if k != "MATCH")
+        print(f"{model:<16} coincide con el mapeador: {format_rate(match, ran)}"
+              + (f"   {detail}" if detail else ""))
+    print()
+    print("  El mapeador determinista es el que produce la RFQ que usa el sistema.")
+    print("  Esta tasa mide si el agente habria hecho el mismo trabajo, para decidir")
+    print("  si compensa lo que cuesta.")
+
+
 def report_agents(store: TelemetryStore) -> None:
     rows = store.query("""
         SELECT model, agent, COUNT(*), AVG(latency_ms),
@@ -136,6 +162,7 @@ def main() -> int:
     models = report_models(store)
     if models:
         report_fields(store)
+        report_proto_fidelity(store)
         report_agents(store)
         report_stability(store)
         report_comparison(store, models)

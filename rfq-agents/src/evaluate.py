@@ -85,12 +85,15 @@ def main() -> int:
                     wrong_fields=comparison.count(FieldOutcome.WRONG),
                     missing_fields_count=comparison.count(FieldOutcome.MISSING),
                     hallucinated_count=comparison.count(FieldOutcome.HALLUCINATED),
+                    proto_agent_status=result.proto_agent.status if result else None,
                     elapsed_ms=elapsed,
                     cost_usd=run_cost(store, result.run_id) if result else None,
                     output_path=result.output_file_path if result else None,
                     error_text=error,
                 )
                 detail = error[:34] if error else comparison.summary()
+                if result and result.proto_agent.status not in ("MATCH", "NOT_RUN"):
+                    detail += f"  proto:{result.proto_agent.status}"
                 print(f"{model:<16} {case_name:<24} {repetition:>3}  "
                       f"{comparison.matched:>2}/{comparison.total:<6} {detail:<34} {elapsed:>7.0f}")
 

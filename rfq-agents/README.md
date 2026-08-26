@@ -146,3 +146,14 @@ per-field failure breakdown, cost and latency per agent, run-to-run stability
 across repetitions, and a paired McNemar test when two or more models share
 cases. Model prices are declared in `config/model_costs.toml`; unverified entries
 are flagged in the report rather than silently trusted.
+
+### Proto agent fidelity
+
+The RFQ the system emits is always produced by the deterministic mapper. The
+proto agent still runs, but only as a measured subject: its output is normalised,
+compared against the mapper and recorded as `MATCH`, `MISMATCH`, `UNPARSEABLE` or
+`NOT_RUN`. A mismatch never aborts a run that already holds a valid RFQ.
+
+This turns "can an LLM serialise correctly against a schema it is given?" into a
+number, which — read next to that agent's share of the token bill — is what
+decides whether the stage earns its place.
