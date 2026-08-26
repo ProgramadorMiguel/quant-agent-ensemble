@@ -15,6 +15,9 @@ def main() -> int:
     parser.add_argument("--prompts", type=Path, default=PROJECT_ROOT / "examples")
     parser.add_argument("--out", type=Path, default=PROJECT_ROOT / "samples")
     parser.add_argument("--model", default=None)
+    parser.add_argument("--json", action="store_true",
+                        help="Also write the canonical JSON projection. Off by default: "
+                             "protobuf is the interchange format in this project.")
     args = parser.parse_args()
 
     args.out.mkdir(parents=True, exist_ok=True)

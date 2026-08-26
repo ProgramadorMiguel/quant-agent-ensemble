@@ -101,13 +101,12 @@ pipeline.
 ## Sample RFQs
 
 `samples/` holds RFQs produced end to end by the agent network from the prompts
-in `examples/`. Each valid request yields two files:
+in `examples/`. Filenames match, so `examples/<case>.txt` is the request that
+produced `samples/<case>.textproto`.
 
-- `<case>.textproto` — the RFQ as protobuf text format. This is the artefact the
-  system produces and the one a pricing engine consumes.
-- `<case>.json` — the canonical JSON projection of the same message, generated
-  with `json_format.MessageToJson`. Provided for readability only; JSON is not
-  an interchange format in this project.
+Protobuf text format is the only output written by default: JSON is not an
+interchange format in this project. Pass `--json` to also emit the canonical
+JSON projection when a reader needs it.
 
 Prompts that omit required terms produce `<case>.rejected.txt` instead,
 reporting which fields were missing. No RFQ is emitted.
