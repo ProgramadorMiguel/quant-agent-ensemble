@@ -60,6 +60,10 @@ ADDED_COLUMNS = {
         "hallucinated_count": "INTEGER",
         "proto_agent_status": "TEXT",   # MATCH / MISMATCH / UNPARSEABLE / NOT_RUN
         "cost_usd": "REAL",
+        # Lo que el caso dorado exige. Sin esto no se puede distinguir "fallo"
+        # de "rechazo correcto": un caso incompleto DEBE salir INVALID.
+        "expected_status": "TEXT",          # VALID / INVALID / NOT_RUN
+        "expected_product_type": "TEXT",    # IRS / UNSUPPORTED
     },
 }
 

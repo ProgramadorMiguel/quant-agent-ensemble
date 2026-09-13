@@ -6,6 +6,14 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 from app_service import PROJECT_ROOT
+from evaluation.aggregate import (
+    SUCCESS_CRITERION,
+    ModelAggregate,
+    evaluated_models,
+    load_model,
+    min_discordant_for_significance,
+    percentile,
+)
 from evaluation.costs import unverified_models
 from evaluation.metrics import format_rate, mcnemar
 from evaluation.telemetry import TelemetryStore
@@ -16,41 +24,52 @@ def rule(title: str) -> None:
     print("-" * len(title))
 
 
-def report_models(store: TelemetryStore) -> list[str]:
-    rows = store.query("""
-        SELECT model,
-               COUNT(*),
-               SUM(product_correct),
-               SUM(validation_correct),
-               SUM(matched_fields),
-               SUM(total_fields),
-               SUM(COALESCE(hallucinated_count, 0)),
-               AVG(elapsed_ms),
-               SUM(cost_usd)
-        FROM evaluation_runs GROUP BY model ORDER BY model
-    """)
-    if not rows:
-        print("Todavía no hay evaluaciones. Lanza:  python src/evaluate.py --models gpt-4.1-mini")
-        return []
+def money(value: float | None, digits: int = 4) -> str:
+    return f"{value:.{digits}f}" if value is not None else "n/d"
 
+
+def report_models(aggregates: list[ModelAggregate]) -> None:
     rule("Resumen por modelo")
-    print(f"{'modelo':<16} {'casos':>5}  {'producto OK':<26} {'campos OK':<26} "
-          f"{'inventados':>10} {'ms':>7} {'coste $':>9}")
-    models = []
-    for (model, n, prod, valid, matched, total, halluc, ms, cost) in rows:
-        models.append(model)
-        print(f"{model:<16} {n:>5}  {format_rate(prod or 0, n):<26} "
-              f"{format_rate(matched or 0, total or 0):<26} "
-              f"{halluc or 0:>10} {ms or 0:>7.0f} "
-              f"{('%.4f' % cost) if cost is not None else 'n/d':>9}")
-    print("\n  [x-y] = intervalo de confianza al 95%. Con pocos casos, un 100% "
-          "sigue siendo compatible\n  con una tasa real bastante más baja.")
-    return models
+    print(f"{'modelo':<16} {'casos':>5}  {'producto OK':<24} {'validacion OK':<24} "
+          f"{'RFQ exacta':<24} {'campos':>7} {'inv.':>5}")
+    for agg in aggregates:
+        print(f"{agg.model:<16} {agg.n:>5}  "
+              f"{format_rate(agg.successes('product_ok'), agg.n):<24} "
+              f"{format_rate(agg.successes('validation_ok'), agg.n):<24} "
+              f"{format_rate(agg.successes('exact_ok'), agg.n):<24} "
+              f"{agg.field_accuracy_mean:>6.1%} {agg.hallucinated:>5}")
+
+    print(f"\n  Criterio: {SUCCESS_CRITERION}.")
+    print("  'validacion OK' = el estado coincide con el que exige el caso dorado:")
+    print("  un caso incompleto debe salir INVALID, y rechazarlo bien puntua como")
+    print("  acierto. 'RFQ exacta' = los diez campos correctos, con Wilson al 95%.")
+    print("  'campos' es macro-media por caso y va sin intervalo: los diez campos")
+    print("  de un caso estan correlacionados y no son ensayos independientes.")
+    excluded = sum(agg.excluded_errors for agg in aggregates)
+    if excluded:
+        print(f"\n  Excluidas {excluded} ejecuciones con error de API: un timeout de red")
+        print("  no es 'el modelo se dejo los campos'. Se conservan en la base de datos.")
+
+
+def report_operations(aggregates: list[ModelAggregate]) -> None:
+    rule("Latencia y coste extremo a extremo")
+    print(f"{'modelo':<16} {'ejec.':>6} {'p50 ms':>8} {'p95 ms':>8} "
+          f"{'$/pasada':>10} {'$/caso valido':>14}")
+    for agg in aggregates:
+        latencies = agg.latencies
+        p50, p95 = percentile(latencies, 0.50), percentile(latencies, 0.95)
+        print(f"{agg.model:<16} {agg.repetitions:>6} "
+              f"{(f'{p50:.0f}' if p50 else 'n/d'):>8} "
+              f"{(f'{p95:.0f}' if p95 else 'n/d'):>8} "
+              f"{money(agg.cost_usd):>10} {money(agg.cost_per_valid_usd):>14}")
+    print("\n  p95 en lugar de la media: en llamadas a API la cola derecha es lo que")
+    print("  se nota. '$/caso valido' es el coste real de obtener una RFQ utilizable.")
 
 
 def report_fields(store: TelemetryStore) -> None:
     rows = store.query(
-        "SELECT model, field_results FROM evaluation_runs WHERE field_results IS NOT NULL"
+        "SELECT model, field_results FROM evaluation_runs "
+        "WHERE field_results IS NOT NULL AND error_text IS NULL"
     )
     if not rows:
         return
@@ -62,7 +81,8 @@ def report_fields(store: TelemetryStore) -> None:
             if outcome != "MATCH":
                 per_model[model][f"{field}:{outcome}"] += 1
 
-    rule("En qué se equivoca cada modelo")
+    rule("En que se equivoca cada modelo")
+    print("  (recuento sobre ejecuciones, para diagnostico; no es una tasa con IC)")
     for model in sorted(totals):
         problems = per_model[model]
         if not problems:
@@ -77,12 +97,13 @@ def report_fields(store: TelemetryStore) -> None:
 def report_proto_fidelity(store: TelemetryStore) -> None:
     rows = store.query("""
         SELECT model, proto_agent_status, COUNT(*)
-        FROM evaluation_runs WHERE proto_agent_status IS NOT NULL
+        FROM evaluation_runs
+        WHERE proto_agent_status IS NOT NULL AND error_text IS NULL
         GROUP BY model, proto_agent_status ORDER BY model
     """)
     if not rows:
         return
-    rule("Fidelidad de serialización del agente proto")
+    rule("Fidelidad de serializacion del agente proto")
     per_model: dict[str, dict[str, int]] = defaultdict(dict)
     for model, status, count in rows:
         per_model[model][status] = count
@@ -97,7 +118,7 @@ def report_proto_fidelity(store: TelemetryStore) -> None:
     print()
     print("  El mapeador determinista es el que produce la RFQ que usa el sistema.")
     print("  Esta tasa mide si el agente habria hecho el mismo trabajo, para decidir")
-    print("  si compensa lo que cuesta.")
+    print("  si compensa lo que cuesta. Denominador = ejecuciones, no casos.")
 
 
 def report_agents(store: TelemetryStore) -> None:
@@ -114,43 +135,51 @@ def report_agents(store: TelemetryStore) -> None:
           f"{'tok in':>8} {'tok out':>8} {'coste $':>9}")
     for model, agent, n, ms, tin, tout, cost in rows:
         print(f"{model:<16} {agent:<20} {n:>8} {ms:>10.0f} {tin or 0:>8} {tout or 0:>8} "
-              f"{('%.4f' % cost) if cost is not None else 'n/d':>9}")
+              f"{money(cost):>9}")
 
 
-def report_stability(store: TelemetryStore) -> None:
-    rows = store.query("""
-        SELECT model, case_name, COUNT(DISTINCT field_results), COUNT(*)
-        FROM evaluation_runs WHERE field_results IS NOT NULL
-        GROUP BY model, case_name HAVING COUNT(*) > 1
-    """)
-    if not rows:
+def report_stability(aggregates: list[ModelAggregate]) -> None:
+    repeated = [agg for agg in aggregates
+                if any(case.repetitions > 1 for case in agg.cases)]
+    if not repeated:
         return
     rule("Estabilidad entre repeticiones")
-    for model, case, distinct, n in rows:
-        verdict = "estable" if distinct == 1 else f"{distinct} resultados distintos"
-        print(f"{model:<16} {case:<28} {n} ejecuciones -> {verdict}")
+    for agg in repeated:
+        cases = [c for c in agg.cases if c.repetitions > 1]
+        unstable = [c for c in cases if not c.stable]
+        print(f"{agg.model:<16} {len(cases) - len(unstable)}/{len(cases)} casos estables")
+        for case in unstable:
+            print(f"   {case.case_name:<28} {case.repetitions} ejecuciones -> "
+                  f"{case.distinct_results} resultados distintos")
 
 
-def report_comparison(store: TelemetryStore, models: list[str]) -> None:
-    if len(models) < 2:
+def report_comparison(aggregates: list[ModelAggregate]) -> None:
+    if len(aggregates) < 2:
         return
-    rule("Comparación pareada entre modelos (McNemar)")
-    for i, a in enumerate(models):
-        for b in models[i + 1:]:
-            rows_a = dict(store.query(
-                "SELECT case_name, MIN(validation_correct) FROM evaluation_runs "
-                "WHERE model = ? GROUP BY case_name", (a,)))
-            rows_b = dict(store.query(
-                "SELECT case_name, MIN(validation_correct) FROM evaluation_runs "
-                "WHERE model = ? GROUP BY case_name", (b,)))
-            shared = sorted(set(rows_a) & set(rows_b))
+    rule("Comparacion pareada entre modelos (McNemar)")
+    threshold = min_discordant_for_significance()
+    for i, first in enumerate(aggregates):
+        for second in aggregates[i + 1:]:
+            a = {c.case_name: c.validation_ok for c in first.cases}
+            b = {c.case_name: c.validation_ok for c in second.cases}
+            shared = sorted(set(a) & set(b))
             if not shared:
                 continue
-            only_a, only_b, p = mcnemar([bool(rows_a[c]) for c in shared],
-                                        [bool(rows_b[c]) for c in shared])
-            verdict = "diferencia significativa" if p < 0.05 else "sin evidencia de diferencia"
-            print(f"{a} vs {b}: {len(shared)} casos comunes | "
-                  f"solo {a}: {only_a} | solo {b}: {only_b} | p = {p:.3f} -> {verdict}")
+            only_a, only_b, p = mcnemar([a[c] for c in shared], [b[c] for c in shared])
+            discordant = only_a + only_b
+            if discordant < threshold:
+                verdict = (f"sin potencia (hacen falta >= {threshold} pares "
+                           f"discordantes, hay {discordant})")
+            elif p < 0.05:
+                verdict = "diferencia significativa"
+            else:
+                verdict = "sin evidencia de diferencia"
+            print(f"{first.model} vs {second.model}: {len(shared)} casos comunes | "
+                  f"solo {first.model}: {only_a} | solo {second.model}: {only_b} | "
+                  f"p = {p:.3f} -> {verdict}")
+    print(f"\n  El binomial exacto no puede bajar de 0,05 con menos de {threshold} pares")
+    print("  discordantes. Por debajo de ese umbral el resultado es falta de potencia,")
+    print("  no ausencia de diferencia: no se debe redactar como empate.")
 
 
 def main() -> int:
@@ -159,19 +188,30 @@ def main() -> int:
     args = parser.parse_args()
 
     store = TelemetryStore(args.db)
-    models = report_models(store)
-    if models:
-        report_fields(store)
-        report_proto_fidelity(store)
-        report_agents(store)
-        report_stability(store)
-        report_comparison(store, models)
+    models = evaluated_models(store)
+    if not models:
+        print("Todavia no hay evaluaciones. Lanza:  python src/evaluate.py --models gpt-4.1-mini")
+        return 0
+
+    aggregates = [load_model(store, model) for model in models]
+    aggregates = [agg for agg in aggregates if agg.n]
+    if not aggregates:
+        print("Solo hay ejecuciones con error de API. Revisa la clave y la conectividad.")
+        return 1
+
+    report_models(aggregates)
+    report_operations(aggregates)
+    report_fields(store)
+    report_proto_fidelity(store)
+    report_agents(store)
+    report_stability(aggregates)
+    report_comparison(aggregates)
 
     pending = unverified_models(PROJECT_ROOT)
     if pending:
         print(f"\nAviso: tarifas sin verificar en config/model_costs.toml -> "
               f"{', '.join(pending)}.\nLos costes de esos modelos son orientativos; "
-              f"verifícalos antes de citarlos en la memoria.")
+              f"verificalos antes de citarlos en la memoria.")
     return 0
 
 

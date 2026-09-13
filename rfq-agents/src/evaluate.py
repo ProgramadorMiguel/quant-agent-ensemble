@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
@@ -11,13 +12,38 @@ from evaluation.metrics import FieldOutcome, compare_fields
 from evaluation.telemetry import TelemetryStore
 from models.irs_fields import IRSFields
 from proto.proto_mapper import parse_irs_textproto
+from validation.irs_validator import validate_irs
 
 
-def expected_fields(case_path: Path) -> dict:
-    expected = parse_irs_textproto(
-        case_path.read_text(encoding="utf-8"), PROJECT_ROOT / "protos/pricing.proto"
+@dataclass(frozen=True)
+class Golden:
+    """Lo que el caso debe producir, no lo que nos gustaria que produjera.
+
+    Se deriva de los propios ficheros dorados, asi que anadir un caso no exige
+    metadatos extra: un dorado al que le faltan terminos obligatorios es, por
+    definicion, un caso que el sistema tiene que rechazar.
+    """
+
+    fields: dict
+    status: str        # VALID / INVALID / NOT_RUN
+    product_type: str  # IRS / UNSUPPORTED
+
+
+def load_golden(cases: Path, case_name: str) -> Golden:
+    product = "IRS"
+    product_file = cases / f"{case_name}.expected.product"
+    if product_file.exists():
+        product = product_file.read_text(encoding="utf-8").strip().upper()
+    expected_path = cases / f"{case_name}.expected.textproto"
+    if product != "IRS" or not expected_path.exists():
+        # Caso de rechazo: no hay campos que extraer y el flujo debe pararse en
+        # el orquestador, de modo que la validacion no llega a ejecutarse.
+        return Golden({}, "NOT_RUN", product)
+    fields = parse_irs_textproto(
+        expected_path.read_text(encoding="utf-8"), PROJECT_ROOT / "protos/pricing.proto"
     )
-    return expected.model_dump(mode="json")
+    status = "VALID" if validate_irs(fields).is_valid else "INVALID"
+    return Golden(fields.model_dump(mode="json"), status, product)
 
 
 def run_cost(store: TelemetryStore, run_id: str) -> float | None:
@@ -49,7 +75,8 @@ def main() -> int:
         for repetition in range(1, args.repetitions + 1):
             for prompt_path in prompt_files:
                 case_name = prompt_path.name.removesuffix(".prompt.txt")
-                expected = expected_fields(args.cases / f"{case_name}.expected.textproto")
+                golden = load_golden(args.cases, case_name)
+                expected = golden.fields
 
                 started = perf_counter()
                 error = None
@@ -71,9 +98,16 @@ def main() -> int:
                     model=model, provider=None, case_name=case_name,
                     repetition=repetition, topology="pipeline",
                     product_type=result.product_type if result else None,
-                    product_correct=int(result is not None and result.product_type == "IRS"),
+                    expected_product_type=golden.product_type,
+                    expected_status=golden.status,
+                    product_correct=int(
+                        result is not None and result.product_type == golden.product_type
+                    ),
+                    # Acierto = coincide con lo esperado. Rechazar bien un caso
+                    # incompleto es un acierto; contarlo como fallo hacia que la
+                    # tasa de validacion no pudiera llegar al 100% por diseno.
                     validation_correct=int(
-                        result is not None and result.validation_status == "VALID"
+                        result is not None and result.validation_status == golden.status
                     ),
                     matched_fields=comparison.matched,
                     total_fields=comparison.total,
@@ -91,7 +125,10 @@ def main() -> int:
                     output_path=result.output_file_path if result else None,
                     error_text=error,
                 )
-                detail = error[:34] if error else comparison.summary()
+                # Una fila con error de API se registra pero queda fuera de los
+                # agregados: un timeout de red no es "el modelo se dejo los
+                # diez campos".
+                detail = f"EXCLUIDA {error[:25]}" if error else comparison.summary()
                 if result and result.proto_agent.status not in ("MATCH", "NOT_RUN"):
                     detail += f"  proto:{result.proto_agent.status}"
                 print(f"{model:<16} {case_name:<24} {repetition:>3}  "
