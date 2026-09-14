@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal
 
 from models.irs_fields import IRSFields
 from models.schedule import FREQUENCY_MONTHS
@@ -34,6 +35,24 @@ REQUIRED_TERMS: tuple[tuple[str, str], ...] = (
 # El diferencial no es obligatorio: un swap vanilla cotizado sin spread tiene
 # spread cero, y eso si es una convencion inequivoca.
 DEFAULTED_TERMS: dict[str, object] = {"floating_leg.spread": 0}
+
+
+def with_defaults(fields: IRSFields) -> IRSFields:
+    """Devuelve los terminos con los valores por omision ya aplicados.
+
+    Se aplica una sola vez, antes de que los terminos lleguen al mapeador
+    determinista y al agente proto, para que ambos partan exactamente de la misma
+    entrada. Cuando el valor por omision se aplicaba dentro del mapeador, el
+    agente recibia una entrada distinta y la comparacion entre los dos media esa
+    diferencia de entrada en lugar de su capacidad de serializar.
+    """
+    if fields.floating_leg.spread is not None:
+        return fields
+    return fields.model_copy(update={
+        "floating_leg": fields.floating_leg.model_copy(
+            update={"spread": Decimal(0)}
+        )
+    })
 
 DAY_COUNTS = ("ACT/360", "ACT/365", "ACT/365.25", "30/360")
 

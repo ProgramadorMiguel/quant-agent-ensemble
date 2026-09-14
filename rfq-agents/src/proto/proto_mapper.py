@@ -65,7 +65,10 @@ def fields_to_textproto(fields: IRSFields, rfq_id: str, proto_path: Path) -> str
 
     irs.floating_leg.index = fields.floating_leg.index
     irs.floating_leg.tenor = fields.floating_leg.tenor
-    irs.floating_leg.spread = float(fields.floating_leg.spread or 0)
+    # El valor por omision del diferencial ya viene aplicado por
+    # validation.irs_validator.with_defaults, de modo que el agente proto recibe
+    # exactamente la misma entrada que este mapeador.
+    irs.floating_leg.spread = float(fields.floating_leg.spread)
     irs.floating_leg.day_count = fields.floating_leg.day_count
     irs.floating_leg.payment_frequency = fields.floating_leg.payment_frequency
     irs.floating_leg.payment_dates.extend(payment_dates(

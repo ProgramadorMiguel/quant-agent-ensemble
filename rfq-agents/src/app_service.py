@@ -9,7 +9,7 @@ from llm_client import LLMClient
 from models.schedule import payment_dates
 from proto.proto_mapper import fields_to_textproto, validate_textproto
 from settings import Settings, get_settings
-from validation.irs_validator import validate_irs
+from validation.irs_validator import validate_irs, with_defaults
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -98,6 +98,11 @@ def generate_rfq_from_prompt(
         )
 
     proto_path = PROJECT_ROOT / "protos/pricing.proto"
+    # Los valores por omision se aplican aqui, una sola vez, para que el mapeador
+    # determinista y el agente proto partan de la misma entrada. Si se aplicasen
+    # dentro del mapeador, la comparacion entre ambos mediria esa diferencia de
+    # entrada y no la capacidad del agente.
+    fields = with_defaults(fields)
     # Source of truth: this is the RFQ the system emits and a pricer consumes.
     proto_text = fields_to_textproto(fields, run_id, proto_path)
     proto_agent = _measure_proto_agent(client, fields, run_id, proto_path, proto_text)

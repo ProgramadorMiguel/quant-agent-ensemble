@@ -292,11 +292,13 @@ campos anterior, el mismo agente alcanzaba coincidencia completa; con la
 estructura de dos patas no reproduce ni un caso, y en uno de ellos emite texto
 que no es protobuf válido.
 
-Es el resultado más limpio de la tanda y responde a la pregunta que motivaba
-conservar ese agente: **un modelo de lenguaje serializa correctamente contra un
-esquema plano y deja de hacerlo en cuanto el esquema tiene submensajes
-anidados.** Leído junto al reparto de coste, sostiene la decisión de diseño de que
-el ensamblaje del mensaje lo realice código determinista.
+> **Nota añadida tras la tanda 4.** La lectura que aquí se hacía —«un modelo
+> serializa bien contra un esquema plano y deja de hacerlo en cuanto hay
+> submensajes anidados»— **es incorrecta y queda retirada**. La cifra de 0/14 de
+> esta tanda no medía la capacidad del modelo sino tres defectos de la propia
+> medición, detallados en la tanda 3 y corregidos antes de la tanda 4, que
+> obtiene 7/7. Se conserva el texto original tachado para que la secuencia de
+> diagnóstico quede trazable.
 
 ### Limitaciones de esta tanda
 
@@ -386,6 +388,13 @@ instrucción ambigua o incompleta produce un fallo que se atribuye al modelo.** 
 los tres casos el contenido financiero era correcto; lo que falló fue lo que se
 le pidió.
 
+> **Nota añadida tras la tanda 4.** La conclusión que este documento sostenía en
+> su primera redacción, «un modelo de lenguaje comprende la economía del producto
+> mejor de lo que respeta la sintaxis del formato», **es falsa** y queda
+> retirada. La tanda 4, con la medición corregida, obtiene 7/7 de fidelidad byte
+> a byte. El modelo respetaba la sintaxis desde el principio; lo que fallaba era
+> la medición.
+
 Conviene señalar que el agente proto no afecta al funcionamiento del sistema. La
 RFQ que se emite la produce siempre el mapeador determinista, y las 26 RFQ
 escritas en `outputs/` son correctas.
@@ -405,8 +414,114 @@ contrastado, y detalla cómo emitir campos repetidos.
 
 ---
 
-## Tanda 4 — Pendiente
+## Tanda 4 — Medición corregida: el sistema completo sin fallos
 
-Objetivo: medir la fidelidad del agente proto con la medición corregida, que es
-la única pregunta abierta del sistema. Después: repeticiones para variabilidad,
-verificación de tarifas y comparación entre `gpt-4.1-mini` y `gpt-4.1`.
+| | |
+|---|---|
+| **Identificador** | `20260914T150109Z` (2026-09-14, 17:01 Madrid) |
+| **Modelo** | `gpt-4.1-mini` |
+| **Casos** | 14, en cuatro familias |
+| **Repeticiones** | 1 |
+| **Cambio respecto a la tanda 3** | Los tres defectos de medición del agente proto, corregidos |
+| **Hash de instrucciones del agente proto** | `39ef285eb8c0` (la tanda 3 usó `501782dae533`) |
+
+### Resultado
+
+| Métrica | Resultado | IC 95 % |
+|---|---|---|
+| Clasificación de producto | **14/14 (100 %)** | [78 %, 100 %] |
+| Estado de validación | **14/14 (100 %)** | [78 %, 100 %] |
+| RFQ exacta | **14/14 (100 %)** | [78 %, 100 %] |
+| Exactitud por campo | **100 %** | — |
+| Campos alucinados | **0** | — |
+| **Fidelidad del agente proto** | **7/7 (100 %)** | [65 %, 100 %] |
+
+Las cuatro familias al 100 %. Ningún fallo de campo registrado.
+
+### Progresión de las cuatro tandas
+
+| Métrica | Tanda 1 | Tanda 2 | Tanda 3 | Tanda 4 |
+|---|---|---|---|---|
+| Clasificación de producto | 12/14 | 14/14 | 14/14 | **14/14** |
+| Estado de validación | 11/14 | 13/14 | 14/14 | **14/14** |
+| Exactitud por campo | 82,5 % | 99,7 % | 100 % | **100 %** |
+| Campos alucinados | 0 | 0 | 0 | **0** |
+| Fidelidad del agente proto | 0/5 | 0/14 | 0/7 | **7/7** |
+
+### El hallazgo central: cuatro fallos, ninguno del modelo
+
+La fidelidad del agente proto pasó de 0 % a 100 % **sin cambiar de modelo, de
+temperatura ni de esquema**. Los cuatro registros de 0 % de las tandas anteriores
+no medían la capacidad de `gpt-4.1-mini`: medían tres defectos encadenados en la
+instrumentación, más un cuarto en el orquestador que afectaba a la clasificación.
+
+| Defecto | Síntoma observado | Causa real |
+|---|---|---|
+| El orquestador declaraba no soportados los «*overnight index swaps*» | Dos IRS vanilla rechazados como `UNSUPPORTED` | `SOFR 3M` y `SONIA 3M` son índices a un día con plazo: pata flotante de un vanilla, no un OIS |
+| La petición al agente proto no incluía los calendarios de pago | `MISMATCH` sistemático | Se comparaba contra una referencia que sí los contiene: imposible coincidir |
+| La instrucción decía «the root message is `RFQ`» | `UNPARSEABLE` | En formato de texto protobuf el mensaje raíz es implícito; nombrarlo lo invalida |
+| El valor por omisión del diferencial se aplicaba dentro del mapeador | `MISMATCH` de una sola línea, `spread: 0.0` | El agente recibía una entrada distinta de la del mapeador |
+
+En los cuatro casos **el contenido financiero producido por el modelo era
+correcto**. El último es el más ilustrativo: el diferencial ausente se rellenaba a
+cero dentro del mapeador, de modo que la referencia contenía `spread: 0.0`
+mientras que al agente no se le enviaba ese término. El modelo omitía un campo que
+nunca recibió, que es el comportamiento correcto, y la comparación lo contaba como
+error. Corregido aplicando el valor por omisión una sola vez, en
+`validation.irs_validator.with_defaults`, antes de que los términos lleguen a
+cualquiera de los dos consumidores.
+
+**Lectura metodológica.** Es el resultado más transferible del trabajo. Un
+evaluador automático de agentes puede producir cifras estables, reproducibles y
+completamente engañosas: cuatro tandas consecutivas arrojaron 0 % de fidelidad con
+plena consistencia interna. Ninguna cantidad de repeticiones ni de intervalos de
+confianza habría revelado el problema, porque el defecto no estaba en la varianza
+sino en la referencia. Antes de atribuir un fallo al modelo hay que verificar que
+la tarea era resoluble con la información suministrada y que la referencia de
+comparación es alcanzable.
+
+### El coste del agente proto, ahora que se puede medir
+
+| Agente | Llamadas | ms medios | Tokens salida | Coste USD | % del coste |
+|---|---|---|---|---|---|
+| `orchestrator` | 14 | 959 | 16 | 0,0063 | 16 % |
+| `product_specialist` | 12 | 2.856 | 1.630 | 0,0216 | 55 % |
+| `rfq_proto` | 7 | **9.415** | 3.716 | 0,0116 | **29 %** |
+
+Con la fidelidad resuelta, la pregunta de diseño queda planteada en términos
+económicos y no de capacidad: el agente proto **es el más lento de los tres**, con
+9.415 ms de media frente a 2.856 ms del especialista, consume el **29 % del
+presupuesto** de cada pasada, y produce exactamente el mismo mensaje que una
+función determinista de cuarenta líneas produce en microsegundos y sin coste.
+
+La latencia extremo a extremo lo refleja: el percentil 95 sube de 8.621 ms en la
+tanda 3 a **18.626 ms**, y el caso `usd_payer_sofr`, con sesenta y dos campos
+repetidos entre las dos patas, tarda 19,8 s. El coste por caso válido pasa de
+0,0024 a 0,0028 USD.
+
+La conclusión no es que un modelo de lenguaje no sepa serializar contra un esquema
+anidado: **sabe hacerlo con fidelidad total, incluidos sesenta y dos campos
+repetidos en orden**. Es que hacerlo no compensa cuando existe una alternativa
+determinista, y esa afirmación queda ahora respaldada por una medición en lugar de
+por una intuición de diseño.
+
+### Limitaciones
+
+- **Una sola repetición.** Un 100 % sobre catorce casos y una pasada tiene un
+  intervalo de Wilson de [78 %, 100 %]: es un buen resultado, no una garantía. La
+  fidelidad de 7/7 tiene un intervalo aún más ancho, [65 %, 100 %].
+- **Un solo modelo y un solo proveedor.**
+- **Tarifas sin verificar** en `config/model_costs.toml`.
+- **Catorce casos** es una batería pequeña para afirmaciones generales.
+
+---
+
+## Tanda 5 — Pendiente
+
+1. Repeticiones (`--repetitions 5`) para estimar variabilidad y estabilidad.
+2. Verificar las tarifas antes de publicar cualquier cifra de coste.
+3. Comparar `gpt-4.1-mini` con `gpt-4.1`, con contraste de McNemar.
+
+Mejora pendiente en la instrumentación, derivada de la incidencia 2 de la tanda 3:
+que `report.py` avise cuando el `prompt_hash` de una tanda no coincide con el del
+fichero de instrucciones presente en disco.
