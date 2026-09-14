@@ -10,6 +10,44 @@ irreversible salvo las marcadas como *cimiento*.
 
 ---
 
+## 0. Qué está implementado y qué no
+
+**Este documento es de diseño, no de estado.** Describe la arquitectura objetivo,
+que en su mayor parte todavía no existe. La tabla siguiente separa ambas cosas
+para que ninguna sección se lea como una descripción de lo ya construido.
+
+| Componente | Estado |
+|---|---|
+| Cadena de tres agentes (orquestador, especialista, proto) | **Implementado** |
+| Capa de validación determinista | **Implementado** |
+| Mapeador determinista a protobuf | **Implementado** |
+| Agente proto como métrica de fidelidad (§4.3) | **Implementado** |
+| Telemetría en SQLite y coste por llamada | **Implementado** |
+| Marco de evaluación: cuatro categorías, Wilson, McNemar (§8) | **Implementado** |
+| Esquema de IRS con dos patas y doble curva (Definición 2.19 del libro) | **Implementado** |
+| Generación determinista del calendario de pagos de cada pata | **Implementado** |
+| Rechazo explícito de términos ausentes, sin defaults de mercado | **Implementado** |
+| Casos dorados agrupados en cuatro familias (§8.3) | **Implementado** |
+| Esquema protobuf multiproducto con `oneof` (§3) | Pendiente |
+| Tipado fuerte de convenciones como enums (§3.3) | Pendiente |
+| Metadatos de trazabilidad en la RFQ (§3.4) | Pendiente |
+| Registro de productos (§4) | Pendiente |
+| Abstracción de proveedores y soporte Anthropic (§5) | Pendiente |
+| Caché de *prompt* y su medición separada (§5.3) | Pendiente |
+| Segundo producto: FRA (§1.2) | Pendiente |
+| Datos de mercado y curvas (§7) | Pendiente |
+| Motor de valoración QuantLib en C++ (§6) | Pendiente |
+| Métrica de error económico en puntos básicos (§8.2, nivel 3) | Pendiente |
+| Comparación de topologías, tres agentes frente a uno (§8.4) | Pendiente |
+
+Estado del sistema implementado, en una línea: **un único producto (IRS, con
+esquema de dos patas y doble curva), un único proveedor (OpenAI), una única
+topología (tres agentes), sin valoración.**
+El flujo real, con datos de ejecuciones registradas, se describe en
+`FLUJO_AGENTES.md`.
+
+---
+
 ## 1. Objetivo y alcance
 
 ### 1.1 Qué debe demostrar el trabajo
@@ -486,6 +524,29 @@ o con ruido** (redacción de mesa real, con jerga y abreviaturas). La tercera
 familia es la que produce las diferencias interesantes; las dos primeras
 establecen el suelo y verifican el rechazo.
 
+### 8.4 Comparación de topologías: tres agentes frente a uno
+
+*Planificado.* Además de comparar modelos, el diseño contempla comparar
+**topologías**: la cadena de tres agentes especializados frente a una variante
+**monolítica** que resuelve la petición completa en una sola llamada.
+
+La pregunta que responde es legítima y no tiene una respuesta obvia: la
+separación en etapas permite atribuir cada fallo a una fase concreta y mantiene
+cada *prompt* corto y auditable, pero multiplica las llamadas, el coste y la
+latencia, y reintroduce en cada frontera la posibilidad de perder información. La
+variante monolítica invierte exactamente esos términos.
+
+La comparación se instrumenta sin tocar el núcleo: la topología ya se registra en
+la columna `topology` de `evaluation_runs`, y la cadena de agentes se declara en
+`config/agents.yaml`, de modo que la variante monolítica es un fichero de
+configuración alternativo con un único agente en el `pipeline`, no una rama de
+código.
+
+Las métricas de comparación son las ya definidas: exactitud por campo, tasa de
+alucinación, coste por RFQ válida, latencia y estabilidad entre repeticiones. La
+hipótesis de partida es que la cadena reduce la alucinación a costa de coste y
+latencia, pero es una hipótesis que el trabajo debe medir, no asumir.
+
 ---
 
 ## 9. Estructura final del repositorio
@@ -559,8 +620,6 @@ Documentadas porque un tribunal preguntará por ellas.
 - **JSON como formato de intercambio.** Descartado: sin tipos, sin validación de
   esquema, y no compartible con C++ sin escribir un parser a mano.
 - **gRPC entre Python y C++.** Descartado por sobredimensionado (sección 6.2).
-- **Un solo agente monolítico.** Descartado: impide atribuir el fallo a una etapa
-  concreta, que es el objeto del estudio.
 - **Que el LLM elija convenciones de mercado no especificadas.** Descartado: el
   conocimiento de mercado va en un fichero auditable, no en pesos de un modelo.
   Además destruiría la métrica de alucinación.

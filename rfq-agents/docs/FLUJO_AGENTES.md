@@ -94,7 +94,7 @@ sin sentido.
 | Skill | `skills/irs_extraction_skill.md` |
 | Esquema | `protos/pricing.proto` |
 | Entrada | El mismo texto original de la petición |
-| Salida | Un mensaje `InterestRateSwap` en protobuf de texto |
+| Salida | Un mensaje `InterestRateSwap` en protobuf de texto, con sus dos patas |
 | Responsabilidad | Traducir lenguaje humano a términos financieros estructurados |
 | No hace | Validar, completar lo que falte ni valorar |
 
@@ -116,8 +116,16 @@ convención de mercado. Esa prohibición es lo que hace medible la alucinación.
 | Salida | Válido o inválido, con la lista de campos ausentes y errores |
 | Coste | Cero tokens, tiempo despreciable |
 
-Comprueba que estén los diez términos obligatorios y que sean coherentes: nocional
-positivo, dirección dentro del enumerado, fecha de inicio anterior al vencimiento.
+Comprueba que estén los quince términos obligatorios del esquema de dos patas y
+que sean coherentes: nocional positivo, base de cálculo y frecuencia de pago
+dentro de las admitidas, fecha de valoración no posterior al vencimiento, y
+fecha de inicio anterior al vencimiento. Cuando falta un término, el informe
+enumera qué debe especificarse: el sistema no rellena una convención de mercado
+ausente, porque una RFQ que se valora limpiamente pero con una convención
+inventada es un fallo peor que un rechazo explícito.
+
+Antiguamente comprobaba diez términos planos; ahora recorre la estructura de
+patas. Dirección dentro del enumerado, fecha de inicio anterior al vencimiento.
 
 Es determinista por decisión de diseño: es la garantía de que ninguna RFQ mal
 formada llega a la etapa de valoración, independientemente de lo que haga el
@@ -257,6 +265,6 @@ planificado:
   en cuanto exista el registro multiproducto.
 - Un único proveedor (OpenAI). La abstracción de proveedores es la sección 5.9 de
   la memoria.
-- Una única topología (tres agentes). La variante monolítica de una sola llamada,
-  con la que se compara, es la sección 5.6.
+- Una única topología (tres agentes). La comparación con una variante monolítica
+  de una sola llamada está planificada y se describe en `ARQUITECTURA.md`, §8.4.
 - Sin valoración: el flujo termina en la RFQ. La etapa de QuantLib es el capítulo 7.
