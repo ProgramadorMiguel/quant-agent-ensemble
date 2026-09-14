@@ -56,11 +56,16 @@ def main() -> int:
         (args.out / f"{case}.textproto").write_text(
             result.generated_proto_text, encoding="utf-8"
         )
-        (args.out / f"{case}.json").write_text(
-            textproto_to_json(result.generated_proto_text, proto_path) + "\n",
-            encoding="utf-8",
-        )
-        print(f"{case:<28} VALID      {case}.textproto + {case}.json")
+        written = f"{case}.textproto"
+        # El protobuf es el unico formato de intercambio del proyecto. La
+        # proyeccion JSON solo se escribe si se pide expresamente.
+        if args.json:
+            (args.out / f"{case}.json").write_text(
+                textproto_to_json(result.generated_proto_text, proto_path) + "\n",
+                encoding="utf-8",
+            )
+            written += f" + {case}.json"
+        print(f"{case:<28} VALID      {written}")
         generated += 1
 
     print(f"\n{generated} RFQ(s) generated, {rejected} rejected -> {args.out}")

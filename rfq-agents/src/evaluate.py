@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
@@ -63,19 +64,31 @@ def main() -> int:
     args = parser.parse_args()
 
     store = TelemetryStore(PROJECT_ROOT / "outputs/evaluations.db")
-    prompt_files = sorted(args.cases.glob("*.prompt.txt"))
+    # rglob para recorrer las subcarpetas de familia: completos, incompletos,
+    # jerga y no_soportados. La familia es el nombre de la carpeta.
+    prompt_files = sorted(args.cases.rglob("*.prompt.txt"))
     if not prompt_files:
         print(f"No cases found in {args.cases}")
         return 1
 
+    # Identificador de la tanda. Todas las filas de esta ejecucion lo comparten,
+    # de modo que el informe puede aislarla en lugar de agregarla con tandas
+    # anteriores que pueden haberse medido contra otras instrucciones u otros
+    # casos dorados.
+    batch_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
     failures = 0
-    print(f"{'model':<16} {'case':<24} {'rep':>3}  {'campos':<9} {'detalle':<34} {'ms':>7}")
-    print("-" * 100)
+    print(f"tanda: {batch_id}\n")
+    print(f"{'model':<16} {'familia':<14} {'case':<22} {'rep':>3}  "
+          f"{'campos':<9} {'detalle':<30} {'ms':>7}")
+    print("-" * 110)
     for model in args.models:
         for repetition in range(1, args.repetitions + 1):
             for prompt_path in prompt_files:
                 case_name = prompt_path.name.removesuffix(".prompt.txt")
-                golden = load_golden(args.cases, case_name)
+                family = (prompt_path.parent.name
+                          if prompt_path.parent != args.cases else "sin_familia")
+                golden = load_golden(prompt_path.parent, case_name)
                 expected = golden.fields
 
                 started = perf_counter()
@@ -95,7 +108,8 @@ def main() -> int:
                 store.record_evaluation(
                     evaluation_id=str(uuid4()),
                     run_id=result.run_id if result else None,
-                    model=model, provider=None, case_name=case_name,
+                    model=model, provider="openai", case_name=case_name,
+                    family=family, batch_id=batch_id,
                     repetition=repetition, topology="pipeline",
                     product_type=result.product_type if result else None,
                     expected_product_type=golden.product_type,
@@ -128,14 +142,16 @@ def main() -> int:
                 # Una fila con error de API se registra pero queda fuera de los
                 # agregados: un timeout de red no es "el modelo se dejo los
                 # diez campos".
-                detail = f"EXCLUIDA {error[:25]}" if error else comparison.summary()
+                detail = f"EXCLUIDA {error[:21]}" if error else comparison.summary()
                 if result and result.proto_agent.status not in ("MATCH", "NOT_RUN"):
                     detail += f"  proto:{result.proto_agent.status}"
-                print(f"{model:<16} {case_name:<24} {repetition:>3}  "
-                      f"{comparison.matched:>2}/{comparison.total:<6} {detail:<34} {elapsed:>7.0f}")
+                print(f"{model:<16} {family:<14} {case_name:<22} {repetition:>3}  "
+                      f"{comparison.matched:>2}/{comparison.total:<6} {detail:<30} "
+                      f"{elapsed:>7.0f}")
 
     print(f"\nResultados en {PROJECT_ROOT / 'outputs/evaluations.db'}")
-    print("Informe comparativo:  python src/report.py")
+    print(f"Informe de esta tanda:  python src/report.py --batch {batch_id}")
+    print("Informe de todas:       python src/report.py --all-batches")
     return 1 if failures else 0
 
 

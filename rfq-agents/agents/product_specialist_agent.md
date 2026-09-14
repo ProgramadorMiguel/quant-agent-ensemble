@@ -30,20 +30,26 @@ These are the fields most often invented. None of them may ever be inferred:
 
 | Field | Do not assume |
 |---|---|
-| `discount_curve`, `forwarding_curve` | The conventional curve for the currency or index. Only what is named. |
-| `floating_index` | The standard index for the currency (EURIBOR for EUR, SOFR for USD, SONIA for GBP). |
-| `floating_tenor` | The usual tenor of the index. `6M` is not implied by "EURIBOR". |
+| `discount_curve`, `forecast_curve` | The conventional curve for the currency or index. Only what is named. |
+| `day_count` of either leg | The prevailing convention. ACT/360 is not implied by "EURIBOR", nor 30/360 by a fixed leg. |
+| `payment_frequency` of either leg | The typical structure. Annual fixed against semiannual floating is common but never implied. |
+| `floating_leg.index` | The standard index for the currency (EURIBOR for EUR, SOFR for USD, SONIA for GBP). |
+| `floating_leg.tenor` | The usual tenor of the index. `6M` is not implied by "EURIBOR", nor by the payment frequency. |
+| `valuation_date` | Never use today's date. Only an explicitly stated valuation date counts. |
 | `maturity_date` | Never compute it from a tenor such as "5y" or "10-year". Only an explicit calendar date counts. |
 | `effective_date` | Never resolve "spot", "spot start", "today" or "T+2" into a date. |
-| `direction` | Never infer from context or from who is asking. Only from explicit wording about who pays or receives fixed. |
+| `is_fixed_rate_receiver` | Never infer from context or from who is asking. Only from explicit wording about who pays or receives fixed. |
 
 ## Reading the request
 
 - **Direction** follows the client's fixed leg. "We pay fixed", "we are the
-  payer", "pay 2.75%" means `PAYER_FIXED`. "We receive fixed", "we are the
-  receiver" means `RECEIVER_FIXED`. If the text only says who pays or receives
-  the *floating* leg, that determines the opposite side. If it is unclear who
-  does what, omit the field.
+  payer", "pay 2.75%" means `is_fixed_rate_receiver: false`. "We receive fixed",
+  "we are the receiver" means `is_fixed_rate_receiver: true`. If the text only
+  says who pays or receives the *floating* leg, that determines the opposite
+  side. If it is unclear who does what, omit the field.
+- **The two legs are independent.** Each carries its own `day_count` and its own
+  `payment_frequency`. Never copy one leg's convention onto the other, and never
+  assume they match.
 - **Rates** are decimal fractions: `2.75%` and `2,75%` both become `0.0275`,
   `275bp` becomes `0.0275`. Never round, never truncate, never reformat a rate
   that is already decimal.
@@ -52,17 +58,20 @@ These are the fields most often invented. None of them may ever be inferred:
 - **Dates** use ISO `YYYY-MM-DD`. Convert an unambiguous written date such as
   "1 September 2026" to `2026-09-01`. Do not guess a purely numeric date whose
   order is ambiguous, such as `03/04/2026`; omit it instead.
-- **Enums** are bare uppercase identifiers, never quoted strings.
+- **Booleans** are the bare literals `true` or `false`, never quoted.
 - The request may be terse desk shorthand, contain typos, or mix languages.
   Read it as written, and apply exactly the same rules.
 
 ## Output contract
 
 Return exactly one `pricing.InterestRateSwap` protobuf text-format message and
-nothing else.
+nothing else, populating its `fixed_leg` and `floating_leg` submessages.
 
 - Omit every field the request does not state. Do not emit a field with a
   placeholder, an empty string, a zero or the literal `null`.
+- **Never emit `payment_dates`.** Each leg's payment schedule is generated
+  deterministically downstream from the effective date, the maturity date and
+  the payment frequency. A request does not state it and you must not invent it.
 - No Markdown fences, no commentary, no explanation before or after the
   message, no blank lines around it.
 - Emit fields in the order declared by the schema, so that repeated runs on the

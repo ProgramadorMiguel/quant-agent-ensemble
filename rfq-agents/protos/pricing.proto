@@ -1,5 +1,22 @@
 syntax = "proto3";
 
+// Esquema de una RFQ de swap de tipos de interes vanilla.
+//
+// La estructura sigue la Definicion 2.19 de AUSIN AMIGO, M. (2025), Quantitative
+// Finance: Code, Concepts, and Practice, Universidad Carlos III de Madrid
+// (ISBN 978-84-10132-25-2): cada flujo del swap es una pata (leg) con su propio
+// calendario de pagos, y la valoracion emplea dos curvas distintas, una de
+// descuento y otra de estimacion, conforme al marco multicurva de la
+// seccion 2.4.6.2.
+//
+// Los nombres notional, rate, is_fixed_rate_receiver, discount_curve y
+// forecast_curve reproducen los argumentos de la clase Swap del Codigo 2.11
+// (pag. 63) para que la RFQ sea consumible por ese valorador sin traduccion.
+//
+// Simplificaciones, las mismas que adopta el libro en la pag. 63: las fechas de
+// devengo coinciden con las del indice, no hay fechas de fijacion separadas y no
+// se modela calendario de dias festivos.
+
 package pricing;
 
 message RFQ {
@@ -8,20 +25,56 @@ message RFQ {
 }
 
 message InterestRateSwap {
-  enum Direction {
-    DIRECTION_UNSPECIFIED = 0;
-    PAYER_FIXED = 1;
-    RECEIVER_FIXED = 2;
-  }
-
+  // Terminos comunes a las dos patas. La Definicion 2.19 exige misma divisa,
+  // mismo nocional y mismo vencimiento en las dos.
   optional double notional = 1;
   optional string currency = 2;
-  optional Direction direction = 3;
-  optional string effective_date = 4;
-  optional string maturity_date = 5;
-  optional double fixed_rate = 6;
-  optional string floating_index = 7;
-  optional string floating_tenor = 8;
-  optional string discount_curve = 9;
-  optional string forwarding_curve = 10;
+
+  // Direccion del swap desde la perspectiva del cliente, con el mismo criterio
+  // que el argumento isFixedRateReceiver de la clase Swap del libro.
+  optional bool is_fixed_rate_receiver = 3;
+
+  // Fecha a la que se valora el swap. Sin ella los factores de descuento
+  // P(t,T) de la ecuacion 2.23 no estan definidos.
+  optional string valuation_date = 4;
+  optional string effective_date = 5;
+  optional string maturity_date = 6;
+
+  // Marco de doble curva de la seccion 2.4.6.2: P_disc descuenta los flujos y
+  // L_est proyecta las fijaciones de la pata flotante.
+  optional string discount_curve = 7;
+  optional string forecast_curve = 8;
+
+  FixedLeg fixed_leg = 9;
+  FloatingLeg floating_leg = 10;
+}
+
+message FixedLeg {
+  // Tipo fijo k de la ecuacion 2.38, en tanto por uno.
+  optional double rate = 1;
+
+  // Base de calculo con la que se obtiene la fraccion de ano tau_i.
+  optional string day_count = 2;
+  optional string payment_frequency = 3;
+
+  // Calendario de pagos de la pata: el vector fixedLegDates de la clase Swap.
+  // Lo genera el codigo a partir de las fechas y la frecuencia; no lo extrae
+  // ningun agente.
+  repeated string payment_dates = 4;
+}
+
+message FloatingLeg {
+  // Indice de referencia y su plazo de fijacion. Determinan que curva de
+  // estimacion proyecta los tipos forward de la ecuacion 2.32.
+  optional string index = 1;
+  optional string tenor = 2;
+
+  // Diferencial sobre el indice, el spread de la ecuacion 2.52.
+  optional double spread = 3;
+
+  optional string day_count = 4;
+  optional string payment_frequency = 5;
+
+  // Vector floatingLegDates de la clase Swap. Generado por el codigo.
+  repeated string payment_dates = 6;
 }

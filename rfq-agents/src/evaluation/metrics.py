@@ -48,10 +48,31 @@ def _empty(value: object) -> bool:
     return value is None or value == ""
 
 
+def flatten(data: dict, prefix: str = "") -> dict[str, object]:
+    """Aplana los submensajes en rutas con punto: ``fixed_leg.day_count``.
+
+    El esquema tiene una pata fija y una flotante como submensajes. Sin aplanar,
+    cada pata contaria como un unico campo y un error dentro de ella se
+    registraria como un solo fallo, cualquiera que fuese el numero de terminos
+    equivocados. La exactitud por campo dejaria de ser un diagnostico.
+    """
+    flat: dict[str, object] = {}
+    for name, value in data.items():
+        path = f"{prefix}{name}"
+        if isinstance(value, dict):
+            flat.update(flatten(value, prefix=f"{path}."))
+        else:
+            flat[path] = value
+    return flat
+
+
 def compare_fields(actual: dict, expected: dict) -> FieldComparison:
     """Classify every field of the golden case against what the model produced."""
+    actual, expected = flatten(actual), flatten(expected)
     per_field: dict[str, FieldOutcome] = {}
-    for name in expected:
+    # Union de rutas: recorrer solo las del caso dorado dejaria sin detectar un
+    # campo inventado que el dorado no contempla en absoluto.
+    for name in list(expected) + [k for k in actual if k not in expected]:
         want, got = expected.get(name), actual.get(name)
         if _empty(want) and _empty(got):
             per_field[name] = FieldOutcome.MATCH

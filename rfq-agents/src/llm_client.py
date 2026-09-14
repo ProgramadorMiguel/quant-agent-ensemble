@@ -82,8 +82,29 @@ class LLMClient:
         proto_text = self._call("product_specialist", prompt)
         return parse_irs_textproto(proto_text, self.project_root / "protos/pricing.proto")
 
-    def generate_proto_text(self, validated_fields: IRSFields, rfq_id: str) -> str:
-        field_lines = [f"rfq_id: {rfq_id}", "Validated IRS fields:"]
-        field_lines.extend(f"{key}: {value}" for key, value in
-                           validated_fields.model_dump(mode="json").items())
-        return self._call("rfq_proto", "\n".join(field_lines))
+    def generate_proto_text(
+        self,
+        validated_fields: IRSFields,
+        rfq_id: str,
+        schedules: dict[str, list[str]] | None = None,
+    ) -> str:
+        """Pide al agente proto que serialice los terminos ya validados.
+
+        Recibe tambien los calendarios de pago de cada pata, generados por
+        ``models.schedule``. Sin ellos el agente no podria coincidir nunca con
+        la RFQ de referencia, que si los incluye, y su tasa de fidelidad medaria
+        una imposibilidad en lugar de una capacidad.
+        """
+        data = validated_fields.model_dump(mode="json")
+        lines = [f"rfq_id: {rfq_id}", "", "Validated IRS fields:"]
+        for key, value in data.items():
+            if isinstance(value, dict):
+                lines.append(f"{key}:")
+                for sub_key, sub_value in value.items():
+                    if sub_value is not None:
+                        lines.append(f"  {sub_key}: {sub_value}")
+                for date in (schedules or {}).get(key, []):
+                    lines.append(f"  payment_dates: {date}")
+            elif value is not None:
+                lines.append(f"{key}: {value}")
+        return self._call("rfq_proto", "\n".join(lines))

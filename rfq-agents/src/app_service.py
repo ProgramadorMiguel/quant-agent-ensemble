@@ -6,6 +6,7 @@ from typing import Any
 from uuid import uuid4
 
 from llm_client import LLMClient
+from models.schedule import payment_dates
 from proto.proto_mapper import fields_to_textproto, validate_textproto
 from settings import Settings, get_settings
 from validation.irs_validator import validate_irs
@@ -121,11 +122,22 @@ def _measure_proto_agent(
 ) -> ProtoAgentOutcome:
     """Run the proto agent and compare it against the deterministic mapper.
 
+    The agent receives the same payment schedules the mapper generates. Without
+    them it could never match the reference, and the fidelity rate would measure
+    an impossibility instead of a capability.
+
     Never raises: a badly serialised RFQ is an observation about the model, not
     a reason to abort a run that already has a valid RFQ.
     """
+    schedules = {
+        leg: payment_dates(
+            fields.effective_date, fields.maturity_date,
+            getattr(fields, leg).payment_frequency,
+        )
+        for leg in ("fixed_leg", "floating_leg")
+    }
     try:
-        raw = client.generate_proto_text(fields, run_id)
+        raw = client.generate_proto_text(fields, run_id, schedules)
     except Exception as exc:
         return ProtoAgentOutcome(False, False, False, f"{type(exc).__name__}: {exc}")
     try:

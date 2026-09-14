@@ -64,6 +64,19 @@ ADDED_COLUMNS = {
         # de "rechazo correcto": un caso incompleto DEBE salir INVALID.
         "expected_status": "TEXT",          # VALID / INVALID / NOT_RUN
         "expected_product_type": "TEXT",    # IRS / UNSUPPORTED
+        # Familia del caso: completos, incompletos, jerga, no_soportados. Un
+        # porcentaje global mezcla las tres y no dice nada; separadas, cada
+        # familia responde a una pregunta distinta.
+        "family": "TEXT",
+        # Identificador de la tanda a la que pertenece la fila.
+        #
+        # La base de datos acumula ejecuciones, y entre una tanda y otra pueden
+        # cambiar las instrucciones de un agente o un caso dorado. Sin este
+        # identificador, el informe agrega filas medidas con criterios distintos
+        # y sus cifras dejan de ser interpretables: dos resultados discrepantes
+        # del mismo caso aparecen como inestabilidad del modelo cuando en
+        # realidad reflejan un cambio de referencia.
+        "batch_id": "TEXT",
     },
 }
 

@@ -1,131 +1,191 @@
 # Vanilla IRS Extraction Skill
 
-Domain knowledge for extracting the economic terms of a vanilla
-fixed-versus-floating single-currency interest rate swap from a
-natural-language request written by a trading desk.
+## The product
 
-## 1. What the product is
+A vanilla fixed-for-floating interest rate swap: two counterparties exchange
+interest flows on the same notional, in the same currency, over the same period.
+One stream pays a fixed rate; the other pays a floating rate linked to a
+published reference index. The notional itself is never exchanged.
 
-Two counterparties exchange interest payments on the same notional amount, in
-the same currency, over the same period. One leg pays a fixed rate agreed at
-inception. The other pays a floating rate that resets periodically against a
-published reference index. The notional is never exchanged; it only serves to
-compute the payments.
+Each stream is a **leg**, and each leg carries its own conventions: its own day
+count basis and its own payment frequency. The two legs are not symmetric and
+must never be filled in from one another.
 
-The direction is always expressed **from the client's point of view**, and it is
-named after the client's fixed leg: paying fixed is `PAYER_FIXED`, receiving
-fixed is `RECEIVER_FIXED`.
+Valuation uses **two separate curves**: a discount curve for present-valuing the
+flows, and a forecast curve for projecting the floating fixings. They are
+different pieces of information and neither can be derived from the other.
 
-Two curves are needed to value the trade, and they are not interchangeable. The
-**discount curve** converts future cash flows into present value. The
-**forwarding curve** projects the future fixings of the floating index. Modern
-practice uses two distinct curves, so a request that names only one has not
-named the other.
+## What to extract
 
-## 2. Fields to extract
+### Common terms
 
-| Field | Type | Notes |
-|---|---|---|
-| `notional` | positive number | No currency symbol, no thousand separators. |
-| `currency` | ISO 4217, uppercase | `EUR`, `USD`, `GBP`. |
-| `direction` | enum | `PAYER_FIXED` or `RECEIVER_FIXED`, from the client's fixed leg. |
-| `effective_date` | ISO `YYYY-MM-DD` | Start of accrual. Also called start date or value date. |
-| `maturity_date` | ISO `YYYY-MM-DD` | End of the swap. Explicit calendar date only. |
-| `fixed_rate` | decimal fraction | `2.75%` is `0.0275`. |
-| `floating_index` | uppercase string | Reference index name, as stated. |
-| `floating_tenor` | uppercase string | Reset tenor of the index, such as `3M` or `6M`. |
-| `discount_curve` | string | Curve identifier, exactly as stated. |
-| `forwarding_curve` | string | Curve identifier, exactly as stated. |
-
-Omit any field the request does not state. All ten are required by the
-validation layer, so an omission is detected and reported downstream; it never
-passes silently.
-
-## 3. Desk shorthand
-
-Requests are frequently terse. These readings are legitimate because the text
-states the information, only compactly:
-
-| Written | Reading |
+| Field | Meaning |
 |---|---|
-| "pay 2.75", "pay fixed 2.75" | `direction: PAYER_FIXED`, `fixed_rate: 0.0275` |
-| "rec 3.1", "receive fixed 3.1" | `direction: RECEIVER_FIXED`, `fixed_rate: 0.031` |
-| "vs 6s", "vs 6m", "against 6M" | floating tenor `6M` |
-| "vs 3s" | floating tenor `3M` |
-| "275bp", "275 bps" | `0.0275` |
-| "10mm", "10 MM", "EUR 10m", "10 million" | `10000000` |
-| "1bn", "1 billion" | `1000000000` |
-| "2,75%" (decimal comma) | `0.0275` |
+| `notional` | Positive amount, digits only, no separators or currency symbol |
+| `currency` | ISO 4217 uppercase code |
+| `is_fixed_rate_receiver` | `false` when the client **pays** fixed, `true` when the client **receives** fixed |
+| `valuation_date` | Date the swap is valued at, ISO `YYYY-MM-DD` |
+| `effective_date` | Start date, ISO `YYYY-MM-DD` |
+| `maturity_date` | End date, ISO `YYYY-MM-DD` |
+| `discount_curve` | Curve identifier, exactly as stated |
+| `forecast_curve` | Curve identifier, exactly as stated |
 
-Common index names, when the text names them: `EURIBOR`, `SOFR`, `SONIA`,
-`ESTR`, `TONA`, `SARON`. Preserve meaningful separators in curve identifiers
-exactly as written, for example `EUR-EURIBOR-6M`, `USD-SOFR`, `GBP-OIS`.
+### Fixed leg (`fixed_leg`)
 
-## 4. What must never be inferred
+| Field | Meaning |
+|---|---|
+| `rate` | Decimal rate: `2.75%` becomes `0.0275` |
+| `day_count` | One of `ACT/360`, `ACT/365`, `ACT/365.25`, `30/360` |
+| `payment_frequency` | One of `1M`, `2M`, `3M`, `4M`, `6M`, `1Y` |
 
-This is the core constraint of this skill, and the reason the system can measure
-hallucination at all. Every field below is one that a knowledgeable human would
-be able to fill from market convention. **You must not.**
+### Floating leg (`floating_leg`)
 
-- **The index from the currency.** "EUR swap" does not imply `EURIBOR`. "USD
-  swap" does not imply `SOFR`. Omit if not named.
-- **The tenor from the index.** "EURIBOR" does not imply `6M`. "vs EURIBOR"
-  with no tenor means the tenor was not stated.
-- **The curves from anything.** `EUR-OIS` is the conventional discount curve for
-  EUR, and that is exactly why naming it yourself is a hallucination. Omit both
-  curve fields unless the text names them.
-- **A maturity date from a tenor.** "5-year swap", "5y", "5yr" state a tenor,
-  not a date. Computing `effective_date + 5 years` is a calculation, and the
-  result would be wrong in general because it ignores calendars and business day
-  conventions. Omit `maturity_date`.
-- **An effective date from "spot".** "Spot start", "spot", "T+2", "starting
-  today" do not resolve to a date without a calendar and a valuation date.
-  Omit `effective_date`.
-- **A direction from context.** Neither the currency, nor the sign of the rate,
-  nor who is sending the request determines who pays fixed.
-- **A rate from the word "par", "market" or "mid".** These describe a rate to be
-  determined, not a stated rate. Omit `fixed_rate`.
+| Field | Meaning |
+|---|---|
+| `index` | Uppercase index name: `EURIBOR`, `SOFR`, `SONIA`, `ESTR` |
+| `tenor` | Fixing tenor of the index: `3M`, `6M` |
+| `spread` | Decimal spread over the index. `25bp` becomes `0.0025`. Omit when not mentioned |
+| `day_count` | Same list as the fixed leg |
+| `payment_frequency` | Same list as the fixed leg |
 
-If a request states only some terms, extract those and omit the rest. Returning
-six of ten fields correctly is a success. Returning ten fields of which four
-were invented is a failure, and a more damaging one.
+## What NOT to extract
 
-## 5. Worked examples
+**Payment schedules.** Do not produce lists of payment dates. They are derived
+deterministically from the start date, the maturity date and the payment
+frequency by code that runs after you. A request never states them.
 
-**Complete request**
+## Never infer
 
-> Vanilla EUR IRS, notional EUR 10,000,000. We pay fixed at 2.75% and receive
-> 6M EURIBOR. Effective 2026-09-01, maturity 2031-09-01. Discount on EUR-OIS,
-> forwarding on EUR-EURIBOR-6M.
+Extract only what the request states or unambiguously implies. Omit anything
+else. Omitting a term is correct behaviour; the system will ask for it. Filling
+it in with the usual market convention produces a request that prices cleanly
+and is wrong, which is far worse than an explicit rejection.
 
-All ten fields are stated: `notional: 10000000`, `currency: "EUR"`,
-`direction: PAYER_FIXED`, `effective_date: "2026-09-01"`,
-`maturity_date: "2031-09-01"`, `fixed_rate: 0.0275`,
-`floating_index: "EURIBOR"`, `floating_tenor: "6M"`,
-`discount_curve: "EUR-OIS"`, `forwarding_curve: "EUR-EURIBOR-6M"`.
+| Never infer | Even though |
+|---|---|
+| `day_count` of either leg | ACT/360 is the usual EUR floating convention |
+| `payment_frequency` of either leg | Annual fixed against semiannual floating is typical |
+| `discount_curve` | ESTR discounting is standard for EUR |
+| `forecast_curve` | It is not implied by the index name |
+| `tenor` | It is not implied by the payment frequency |
+| `index` | It is not implied by the currency |
+| `valuation_date` | It is not today's date unless the request says so |
+| `maturity_date` | Never compute it from a tenor such as "5 years" |
+| `effective_date` | "Spot start" is not a date |
+| `is_fixed_rate_receiver` | Absent a stated direction, omit it |
 
-**Incomplete request**
+One exception, and only this one: an unstated `spread` on a vanilla swap is zero.
+Omit the field and the system will treat it as zero.
 
-> EUR swap, 5,000,000. We pay fixed at 2.60% from 2026-09-01 to 2031-09-01.
+## Reading trading desk shorthand
 
-Extract six fields: notional, currency, direction, both dates and the rate.
-Omit `floating_index`, `floating_tenor`, `discount_curve` and
-`forwarding_curve`. The temptation to write `EURIBOR` and `EUR-OIS` is exactly
-what must be resisted: the text does not say them.
+| Written | Means |
+|---|---|
+| `10mm`, `10MM` | notional `10000000` |
+| `250k` | notional `250000` |
+| `EUR 10,000,000` | notional `10000000`, currency `EUR` |
+| `2,75%` | `0.0275` (comma is a decimal separator) |
+| `275bp`, `275 bps` | `0.0275` |
+| `+25bp` over an index | `spread` of `0.0025` |
+| `vs 6s`, `vs 6m` | floating `tenor` of `6M` |
+| `we pay fixed`, `pay fixed`, `payer` | `is_fixed_rate_receiver: false` |
+| `we receive fixed`, `rec fixed`, `receiver` | `is_fixed_rate_receiver: true` |
+| `ann`, `annual` | `payment_frequency` of `1Y` |
+| `s/a`, `semi` | `payment_frequency` of `6M` |
+| `qtr`, `quarterly` | `payment_frequency` of `3M` |
+| `30/360`, `30E/360` | `day_count` of `30/360` |
+| `A/360`, `act/360` | `day_count` of `ACT/360` |
 
-**Terse request with a tenor instead of a date**
+A tenor such as `5y` describes the length of the swap. It is **not** a maturity
+date: do not convert it into one.
 
-> 5y USD, pay 3.85 vs 3s SOFR, spot start, 25mm.
+## Worked examples
 
-Extract `notional: 25000000`, `currency: "USD"`, `direction: PAYER_FIXED`,
-`fixed_rate: 0.0385`, `floating_index: "SOFR"`, `floating_tenor: "3M"`.
-Omit both dates: "5y" is a tenor and "spot start" is a convention, neither is a
-calendar date. Omit both curves: none is named.
+### Complete request
 
-## 6. Scope
+> Value as of 2026-09-01 a vanilla EUR interest rate swap, notional
+> EUR 10,000,000, effective 2026-09-01, maturing 2031-09-01. We pay fixed at
+> 2.75% annually on a 30/360 basis and receive 6M EURIBOR semiannually on
+> ACT/360. Discount on EUR-ESTR, forecast on EUR-EURIBOR-6M.
 
-This skill covers vanilla single-currency fixed-versus-floating IRS only, on a
-constant notional and with no optionality. It does not cover basis swaps,
-cross-currency swaps, overnight index swaps quoted as a separate product, FRAs,
-caps, floors, swaptions, or amortising and step-up structures. Those requests
-are rejected earlier in the pipeline and never reach this skill.
+```
+notional: 10000000
+currency: "EUR"
+is_fixed_rate_receiver: false
+valuation_date: "2026-09-01"
+effective_date: "2026-09-01"
+maturity_date: "2031-09-01"
+discount_curve: "EUR-ESTR"
+forecast_curve: "EUR-EURIBOR-6M"
+fixed_leg {
+  rate: 0.0275
+  day_count: "30/360"
+  payment_frequency: "1Y"
+}
+floating_leg {
+  index: "EURIBOR"
+  tenor: "6M"
+  day_count: "ACT/360"
+  payment_frequency: "6M"
+}
+```
+
+### Incomplete request
+
+> Value as of 2026-09-01 a EUR swap, notional 5,000,000, from 2026-09-01 to
+> 2031-09-01. We receive fixed at 2.60% annually. Floating is 3M EURIBOR
+> quarterly.
+
+```
+notional: 5000000
+currency: "EUR"
+is_fixed_rate_receiver: true
+valuation_date: "2026-09-01"
+effective_date: "2026-09-01"
+maturity_date: "2031-09-01"
+fixed_leg {
+  rate: 0.026
+  payment_frequency: "1Y"
+}
+floating_leg {
+  index: "EURIBOR"
+  tenor: "3M"
+  payment_frequency: "3M"
+}
+```
+
+Both day count bases and both curves are missing from the request, so they are
+absent from the output. Do not supply them.
+
+### Desk shorthand
+
+> val 2026-09-01, 10mm USD 5y from 2026-09-01 to 2031-09-01, pay 3,25% ann
+> 30/360 vs SOFR 3m qtr A/360 +15bp, disc USD-SOFR, fwd USD-SOFR-3M
+
+```
+notional: 10000000
+currency: "USD"
+is_fixed_rate_receiver: false
+valuation_date: "2026-09-01"
+effective_date: "2026-09-01"
+maturity_date: "2031-09-01"
+discount_curve: "USD-SOFR"
+forecast_curve: "USD-SOFR-3M"
+fixed_leg {
+  rate: 0.0325
+  day_count: "30/360"
+  payment_frequency: "1Y"
+}
+floating_leg {
+  index: "SOFR"
+  tenor: "3M"
+  spread: 0.0015
+  day_count: "ACT/360"
+  payment_frequency: "3M"
+}
+```
+
+## Output
+
+Exactly one `pricing.InterestRateSwap` protobuf text-format message. No Markdown
+fences, no commentary. Omit any field the request does not state.

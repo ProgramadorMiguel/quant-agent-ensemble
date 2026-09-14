@@ -38,11 +38,37 @@ measurement.
 
 Return exactly one protobuf text-format message and nothing else.
 
-- The root message is `RFQ`. Populate `rfq_id` with the identifier supplied in
-  the request, and populate the nested `irs` message with the validated terms.
-- Enum values are bare uppercase identifiers, never quoted strings:
-  `direction: PAYER_FIXED`, not `direction: "PAYER_FIXED"`.
+- **Never write the name of the root message.** In protobuf text format the root
+  message is implicit: its fields are written directly, at column zero, with no
+  wrapper. Start the output with `rfq_id:` and never with `RFQ {`.
+
+  Correct:
+
+  ```
+  rfq_id: "abc123"
+  irs {
+    notional: 10000000.0
+  }
+  ```
+
+  Wrong, and unparseable:
+
+  ```
+  RFQ {
+    rfq_id: "abc123"
+  }
+  ```
+
+- Populate `rfq_id` with the identifier supplied in the request, and populate the
+  nested `irs` message with the validated terms, including its `fixed_leg` and
+  `floating_leg` submessages.
+- Boolean fields are the bare literals `true` or `false`, never quoted:
+  `is_fixed_rate_receiver: false`, not `is_fixed_rate_receiver: "false"`.
 - String fields are double-quoted. Numeric fields are unquoted.
+- Each leg's `payment_dates` are supplied in the request, one per line. Copy
+  every one of them, in the order given, as a repeated field: one
+  `payment_dates: "YYYY-MM-DD"` line per date, inside the leg it belongs to.
+  Never omit, add, reorder, deduplicate or collapse them into a list.
 - Emit fields in the order declared by the schema.
 - No Markdown fences, no commentary, no explanation, no blank lines around the
   message.

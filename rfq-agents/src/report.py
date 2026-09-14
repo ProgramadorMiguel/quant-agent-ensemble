@@ -9,7 +9,9 @@ from app_service import PROJECT_ROOT
 from evaluation.aggregate import (
     SUCCESS_CRITERION,
     ModelAggregate,
+    available_batches,
     evaluated_models,
+    latest_batch,
     load_model,
     min_discordant_for_significance,
     percentile,
@@ -42,9 +44,10 @@ def report_models(aggregates: list[ModelAggregate]) -> None:
     print(f"\n  Criterio: {SUCCESS_CRITERION}.")
     print("  'validacion OK' = el estado coincide con el que exige el caso dorado:")
     print("  un caso incompleto debe salir INVALID, y rechazarlo bien puntua como")
-    print("  acierto. 'RFQ exacta' = los diez campos correctos, con Wilson al 95%.")
-    print("  'campos' es macro-media por caso y va sin intervalo: los diez campos")
-    print("  de un caso estan correlacionados y no son ensayos independientes.")
+    print("  acierto. 'RFQ exacta' = todos los terminos correctos, con Wilson al 95%.")
+    print("  'campos' es macro-media por caso y va sin intervalo: los terminos de un")
+    print("  caso estan correlacionados y no son ensayos independientes. Cada termino")
+    print("  de cada pata cuenta por separado (fixed_leg.day_count y los demas).")
     excluded = sum(agg.excluded_errors for agg in aggregates)
     if excluded:
         print(f"\n  Excluidas {excluded} ejecuciones con error de API: un timeout de red")
@@ -66,10 +69,66 @@ def report_operations(aggregates: list[ModelAggregate]) -> None:
     print("  se nota. '$/caso valido' es el coste real de obtener una RFQ utilizable.")
 
 
-def report_fields(store: TelemetryStore) -> None:
+FAMILY_QUESTION = {
+    "completos": "extrae limpio una peticion completa",
+    "incompletos": "detecta lo que falta y no lo inventa",
+    "jerga": "entiende la redaccion abreviada de mesa",
+    "no_soportados": "rechaza un producto que no sabe tratar",
+}
+
+
+def _batch_filter(batch_id: str | None, column: str = "batch_id") -> tuple[str, tuple]:
+    """Clausula y parametros para restringir una consulta a una tanda."""
+    if batch_id is None:
+        return "", ()
+    return f" AND {column} = ?", (batch_id,)
+
+
+def report_families(store: TelemetryStore, batch_id: str | None = None) -> None:
+    """Desglose por familia de caso.
+
+    Un porcentaje global mezcla preguntas distintas y no es interpretable: un
+    100% puede venir de casos triviales, y un 70% puede ser excelente si los
+    fallos estan en la familia mas dificil.
+    """
+    clause, params = _batch_filter(batch_id)
+    rows = store.query(f"""
+        SELECT model, family, case_name,
+               MIN(validation_correct), MIN(product_correct)
+        FROM evaluation_runs
+        WHERE error_text IS NULL AND family IS NOT NULL{clause}
+        GROUP BY model, family, case_name
+        ORDER BY model, family, case_name
+    """, params)
+    if not rows:
+        return
+    rule("Resultado por familia de caso")
+    grouped: dict[tuple[str, str], list[tuple[int, int]]] = {}
+    for model, family, _case, validation_ok, product_ok in rows:
+        grouped.setdefault((model, family), []).append((validation_ok, product_ok))
+
+    current_model = None
+    for (model, family), results in grouped.items():
+        if model != current_model:
+            print(f"\n{model}")
+            current_model = model
+        n = len(results)
+        # En los casos no soportados lo que se mide es la clasificacion: el
+        # flujo se detiene en el orquestador y no llega a validarse nada.
+        index = 1 if family == "no_soportados" else 0
+        ok = sum(1 for r in results if r[index])
+        question = FAMILY_QUESTION.get(family, family)
+        print(f"   {family:<16} {format_rate(ok, n):<26} {question}")
+    print("\n  Cada familia responde a una pregunta distinta, asi que sus tasas no")
+    print("  se promedian entre si. El agregado global esta arriba.")
+
+
+def report_fields(store: TelemetryStore, batch_id: str | None = None) -> None:
+    clause, params = _batch_filter(batch_id)
     rows = store.query(
         "SELECT model, field_results FROM evaluation_runs "
-        "WHERE field_results IS NOT NULL AND error_text IS NULL"
+        f"WHERE field_results IS NOT NULL AND error_text IS NULL{clause}",
+        params,
     )
     if not rows:
         return
@@ -94,13 +153,14 @@ def report_fields(store: TelemetryStore) -> None:
             print(f"   {field:<20} {outcome:<14} {count:>3} de {totals[model][field]}")
 
 
-def report_proto_fidelity(store: TelemetryStore) -> None:
-    rows = store.query("""
+def report_proto_fidelity(store: TelemetryStore, batch_id: str | None = None) -> None:
+    clause, params = _batch_filter(batch_id)
+    rows = store.query(f"""
         SELECT model, proto_agent_status, COUNT(*)
         FROM evaluation_runs
-        WHERE proto_agent_status IS NOT NULL AND error_text IS NULL
+        WHERE proto_agent_status IS NOT NULL AND error_text IS NULL{clause}
         GROUP BY model, proto_agent_status ORDER BY model
-    """)
+    """, params)
     if not rows:
         return
     rule("Fidelidad de serializacion del agente proto")
@@ -121,13 +181,19 @@ def report_proto_fidelity(store: TelemetryStore) -> None:
     print("  si compensa lo que cuesta. Denominador = ejecuciones, no casos.")
 
 
-def report_agents(store: TelemetryStore) -> None:
-    rows = store.query("""
+def report_agents(store: TelemetryStore, batch_id: str | None = None) -> None:
+    # api_calls no lleva batch_id: se acota por los run_id de la tanda.
+    clause, params = ("", ())
+    if batch_id is not None:
+        clause = (" AND run_id IN (SELECT run_id FROM evaluation_runs "
+                  "WHERE batch_id = ? AND run_id IS NOT NULL)")
+        params = (batch_id,)
+    rows = store.query(f"""
         SELECT model, agent, COUNT(*), AVG(latency_ms),
                SUM(input_tokens), SUM(output_tokens), SUM(cost_usd)
-        FROM api_calls WHERE status = 'SUCCESS'
+        FROM api_calls WHERE status = 'SUCCESS'{clause}
         GROUP BY model, agent ORDER BY model, agent
-    """)
+    """, params)
     if not rows:
         return
     rule("Coste y latencia por agente")
@@ -185,25 +251,62 @@ def report_comparison(aggregates: list[ModelAggregate]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Informe comparativo de modelos")
     parser.add_argument("--db", type=Path, default=PROJECT_ROOT / "outputs/evaluations.db")
+    parser.add_argument("--batch", default=None,
+                        help="Identificador de tanda. Por omision, la ultima.")
+    parser.add_argument("--all-batches", action="store_true",
+                        help="Agrega todas las tandas. Solo tiene sentido si se "
+                             "midieron contra las mismas instrucciones y casos.")
     args = parser.parse_args()
 
     store = TelemetryStore(args.db)
-    models = evaluated_models(store)
+    batches = available_batches(store)
+
+    # Por omision se informa de una sola tanda, la ultima. Agregar tandas medidas
+    # contra instrucciones o casos dorados distintos produce cifras que mezclan
+    # criterios, y hace aparecer como inestabilidad del modelo lo que en realidad
+    # es un cambio de referencia.
+    batch_id = None if args.all_batches else (args.batch or latest_batch(store))
+
+    models = evaluated_models(store, batch_id)
     if not models:
+        if batch_id and batches:
+            print(f"No hay filas para la tanda {batch_id}.")
+            print(f"Tandas disponibles: {', '.join(batches)}")
+            return 1
         print("Todavia no hay evaluaciones. Lanza:  python src/evaluate.py --models gpt-4.1-mini")
         return 0
 
-    aggregates = [load_model(store, model) for model in models]
+    if args.all_batches and len(batches) > 1:
+        print(f"AVISO: se agregan {len(batches)} tandas: {', '.join(batches)}.")
+        print("Si entre ellas cambio una instruccion o un caso dorado, las cifras")
+        print("mezclan criterios y no son publicables.\n")
+    elif batch_id:
+        print(f"Tanda: {batch_id}"
+              + (f"   (hay {len(batches)}; --all-batches para agregarlas)"
+                 if len(batches) > 1 else ""))
+    legacy = store.query(
+        "SELECT COUNT(*) FROM evaluation_runs WHERE batch_id IS NULL")
+    legacy_rows = legacy[0][0] if legacy else 0
+    if legacy_rows and batch_id is not None:
+        print(f"AVISO: {legacy_rows} filas sin identificador de tanda, anteriores a su")
+        print("introduccion, quedan fuera de este informe.")
+    elif legacy_rows:
+        print(f"AVISO: {legacy_rows} filas sin identificador de tanda. Se agregan todas,")
+        print("y si entre ellas cambio una instruccion o un caso dorado, las cifras")
+        print("mezclan criterios y no son publicables.")
+
+    aggregates = [load_model(store, model, batch_id) for model in models]
     aggregates = [agg for agg in aggregates if agg.n]
     if not aggregates:
         print("Solo hay ejecuciones con error de API. Revisa la clave y la conectividad.")
         return 1
 
     report_models(aggregates)
+    report_families(store, batch_id)
     report_operations(aggregates)
-    report_fields(store)
-    report_proto_fidelity(store)
-    report_agents(store)
+    report_fields(store, batch_id)
+    report_proto_fidelity(store, batch_id)
+    report_agents(store, batch_id)
     report_stability(aggregates)
     report_comparison(aggregates)
 

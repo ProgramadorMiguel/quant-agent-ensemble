@@ -8,7 +8,8 @@ from pathlib import Path
 from google.protobuf import json_format, text_format
 from grpc_tools import protoc
 
-from models.irs_fields import IRSFields
+from models.irs_fields import FixedLegFields, FloatingLegFields, IRSFields
+from models.schedule import payment_dates
 
 
 def _load_pricing_module(proto_path: Path):
@@ -35,20 +36,42 @@ def _load_pricing_module(proto_path: Path):
 
 
 def fields_to_textproto(fields: IRSFields, rfq_id: str, proto_path: Path) -> str:
-    """Deterministic mapper useful for tests and non-LLM fallback tooling."""
+    """Mapeador determinista. Es el que produce la RFQ que emite el sistema.
+
+    Ademas de copiar los terminos extraidos, genera el calendario de pagos de
+    cada pata (los vectores fixedLegDates y floatingLegDates de la clase Swap
+    del libro) a partir de las fechas y la frecuencia. Ese calendario es
+    deterministico y no se pide a ningun agente.
+    """
     pb = _load_pricing_module(proto_path)
     message = pb.RFQ(rfq_id=rfq_id)
     irs = message.irs
     irs.notional = float(fields.notional)
     irs.currency = fields.currency
-    irs.direction = getattr(pb.InterestRateSwap, fields.direction)
+    irs.is_fixed_rate_receiver = bool(fields.is_fixed_rate_receiver)
+    irs.valuation_date = fields.valuation_date.isoformat()
     irs.effective_date = fields.effective_date.isoformat()
     irs.maturity_date = fields.maturity_date.isoformat()
-    irs.fixed_rate = float(fields.fixed_rate)
-    irs.floating_index = fields.floating_index
-    irs.floating_tenor = fields.floating_tenor
     irs.discount_curve = fields.discount_curve
-    irs.forwarding_curve = fields.forwarding_curve
+    irs.forecast_curve = fields.forecast_curve
+
+    irs.fixed_leg.rate = float(fields.fixed_leg.rate)
+    irs.fixed_leg.day_count = fields.fixed_leg.day_count
+    irs.fixed_leg.payment_frequency = fields.fixed_leg.payment_frequency
+    irs.fixed_leg.payment_dates.extend(payment_dates(
+        fields.effective_date, fields.maturity_date,
+        fields.fixed_leg.payment_frequency,
+    ))
+
+    irs.floating_leg.index = fields.floating_leg.index
+    irs.floating_leg.tenor = fields.floating_leg.tenor
+    irs.floating_leg.spread = float(fields.floating_leg.spread or 0)
+    irs.floating_leg.day_count = fields.floating_leg.day_count
+    irs.floating_leg.payment_frequency = fields.floating_leg.payment_frequency
+    irs.floating_leg.payment_dates.extend(payment_dates(
+        fields.effective_date, fields.maturity_date,
+        fields.floating_leg.payment_frequency,
+    ))
     return text_format.MessageToString(message)
 
 
@@ -62,24 +85,37 @@ def validate_textproto(proto_text: str, proto_path: Path) -> str:
 
 
 def parse_irs_textproto(proto_text: str, proto_path: Path) -> IRSFields:
+    """Lee un InterestRateSwap en texto y lo lleva al modelo de extraccion."""
     pb = _load_pricing_module(proto_path)
     message = pb.InterestRateSwap()
     text_format.Parse(proto_text, message)
 
-    def present(name: str):
-        return getattr(message, name) if message.HasField(name) else None
+    def present(holder, name):
+        return getattr(holder, name) if holder.HasField(name) else None
 
-    direction = None
-    if message.HasField("direction"):
-        direction = pb.InterestRateSwap.Direction.Name(message.direction)
+    fixed = message.fixed_leg
+    floating = message.floating_leg
     return IRSFields.model_validate({
-        "notional": present("notional"), "currency": present("currency"),
-        "direction": direction, "effective_date": present("effective_date"),
-        "maturity_date": present("maturity_date"), "fixed_rate": present("fixed_rate"),
-        "floating_index": present("floating_index"),
-        "floating_tenor": present("floating_tenor"),
-        "discount_curve": present("discount_curve"),
-        "forwarding_curve": present("forwarding_curve"),
+        "notional": present(message, "notional"),
+        "currency": present(message, "currency"),
+        "is_fixed_rate_receiver": present(message, "is_fixed_rate_receiver"),
+        "valuation_date": present(message, "valuation_date"),
+        "effective_date": present(message, "effective_date"),
+        "maturity_date": present(message, "maturity_date"),
+        "discount_curve": present(message, "discount_curve"),
+        "forecast_curve": present(message, "forecast_curve"),
+        "fixed_leg": FixedLegFields.model_validate({
+            "rate": present(fixed, "rate"),
+            "day_count": present(fixed, "day_count"),
+            "payment_frequency": present(fixed, "payment_frequency"),
+        }),
+        "floating_leg": FloatingLegFields.model_validate({
+            "index": present(floating, "index"),
+            "tenor": present(floating, "tenor"),
+            "spread": present(floating, "spread"),
+            "day_count": present(floating, "day_count"),
+            "payment_frequency": present(floating, "payment_frequency"),
+        }),
     })
 
 

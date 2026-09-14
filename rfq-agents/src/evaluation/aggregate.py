@@ -103,18 +103,48 @@ ERRORS_SQL = (
     "SELECT COUNT(*) FROM evaluation_runs WHERE model = ? AND error_text IS NOT NULL"
 )
 
-MODELS_SQL = "SELECT DISTINCT model FROM evaluation_runs ORDER BY model"
+MODELS_SQL = "SELECT DISTINCT model FROM evaluation_runs"
+
+BATCHES_SQL = (
+    "SELECT DISTINCT batch_id FROM evaluation_runs "
+    "WHERE batch_id IS NOT NULL ORDER BY batch_id"
+)
 
 
-def evaluated_models(store) -> list[str]:
-    return [row[0] for row in store.query(MODELS_SQL)]
+def _scoped(sql: str, batch_id: str | None) -> str:
+    """Restringe una consulta a una tanda concreta.
+
+    Filtrar por tanda no es cosmetico: entre una tanda y otra pueden cambiar las
+    instrucciones de un agente o un caso dorado, y agregar filas medidas contra
+    referencias distintas produce cifras que no significan nada.
+    """
+    return sql if batch_id is None else f"{sql} AND batch_id = ?"
 
 
-def load_model(store, model: str) -> ModelAggregate:
+def _params(model: str, batch_id: str | None) -> tuple:
+    return (model,) if batch_id is None else (model, batch_id)
+
+
+def available_batches(store) -> list[str]:
+    return [row[0] for row in store.query(BATCHES_SQL)]
+
+
+def latest_batch(store) -> str | None:
+    batches = available_batches(store)
+    return batches[-1] if batches else None
+
+
+def evaluated_models(store, batch_id: str | None = None) -> list[str]:
+    sql = MODELS_SQL if batch_id is None else f"{MODELS_SQL} WHERE batch_id = ?"
+    params = () if batch_id is None else (batch_id,)
+    return sorted(row[0] for row in store.query(sql, params))
+
+
+def load_model(store, model: str, batch_id: str | None = None) -> ModelAggregate:
     grouped: dict[str, list[tuple]] = {}
-    for row in store.query(ROWS_SQL, (model,)):
+    for row in store.query(_scoped(ROWS_SQL, batch_id), _params(model, batch_id)):
         grouped.setdefault(row[0], []).append(row)
-    errors = store.query(ERRORS_SQL, (model,))
+    errors = store.query(_scoped(ERRORS_SQL, batch_id), _params(model, batch_id))
     return ModelAggregate(
         model=model,
         cases=tuple(_case(name, rows) for name, rows in sorted(grouped.items())),
