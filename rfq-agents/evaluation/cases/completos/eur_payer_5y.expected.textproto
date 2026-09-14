@@ -1,0 +1,19 @@
+notional: 10000000
+currency: "EUR"
+is_fixed_rate_receiver: false
+valuation_date: "2026-09-01"
+effective_date: "2026-09-01"
+maturity_date: "2031-09-01"
+discount_curve: "EUR-ESTR"
+forecast_curve: "EUR-EURIBOR-6M"
+fixed_leg {
+  rate: 0.0275
+  day_count: "30/360"
+  payment_frequency: "1Y"
+}
+floating_leg {
+  index: "EURIBOR"
+  tenor: "6M"
+  day_count: "ACT/360"
+  payment_frequency: "6M"
+}

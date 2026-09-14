@@ -1,0 +1,4 @@
+Please value as of 2026-10-01 an EUR interest rate swap of EUR 25,000,000
+running from 2026-10-01 to 2029-10-01. The client receives fixed at 2.40%
+annually, ACT/365 basis, and pays 3M EURIBOR quarterly on ACT/360.
+Discounting curve EUR-ESTR, forecasting curve EUR-EURIBOR-3M.

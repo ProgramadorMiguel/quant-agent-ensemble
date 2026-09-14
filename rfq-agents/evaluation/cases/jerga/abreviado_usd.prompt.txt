@@ -1,0 +1,2 @@
+val 2026-09-01, 10mm USD from 2026-09-01 to 2031-09-01, pay 3,25% ann 30/360
+vs SOFR 3m qtr A/360 +15bp, disc USD-SOFR, fwd USD-SOFR-3M

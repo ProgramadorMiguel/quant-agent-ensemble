@@ -1,0 +1,19 @@
+notional: 30000000
+currency: "GBP"
+is_fixed_rate_receiver: false
+valuation_date: "2026-09-01"
+effective_date: "2026-09-01"
+maturity_date: "2036-09-01"
+discount_curve: "GBP-SONIA"
+forecast_curve: "GBP-SONIA-3M"
+fixed_leg {
+  rate: 0.041
+  day_count: "ACT/365"
+  payment_frequency: "1Y"
+}
+floating_leg {
+  index: "SONIA"
+  tenor: "3M"
+  day_count: "ACT/365"
+  payment_frequency: "3M"
+}

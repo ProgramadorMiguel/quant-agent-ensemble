@@ -1,0 +1,4 @@
+RFQ for a GBP interest rate swap. Notional GBP 15,000,000, valuation date
+2026-09-01, effective 2026-09-01, maturity 2028-09-01. The client receives
+fixed at 4.10% annually on ACT/365 and pays 3M SONIA quarterly on ACT/365.
+Discount on GBP-SONIA and forecast on GBP-SONIA-3M.

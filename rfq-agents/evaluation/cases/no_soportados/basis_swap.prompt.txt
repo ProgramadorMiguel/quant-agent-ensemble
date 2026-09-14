@@ -1,0 +1,3 @@
+Value as of 2026-09-01 an EUR basis swap of EUR 20,000,000 from 2026-09-01 to
+2031-09-01, paying 3M EURIBOR quarterly and receiving 6M EURIBOR semiannually
+plus 8bp. Discount EUR-ESTR.

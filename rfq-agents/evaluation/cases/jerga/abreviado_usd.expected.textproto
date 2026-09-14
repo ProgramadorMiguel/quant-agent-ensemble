@@ -1,0 +1,20 @@
+notional: 10000000
+currency: "USD"
+is_fixed_rate_receiver: false
+valuation_date: "2026-09-01"
+effective_date: "2026-09-01"
+maturity_date: "2031-09-01"
+discount_curve: "USD-SOFR"
+forecast_curve: "USD-SOFR-3M"
+fixed_leg {
+  rate: 0.0325
+  day_count: "30/360"
+  payment_frequency: "1Y"
+}
+floating_leg {
+  index: "SOFR"
+  tenor: "3M"
+  spread: 0.0015
+  day_count: "ACT/360"
+  payment_frequency: "3M"
+}
