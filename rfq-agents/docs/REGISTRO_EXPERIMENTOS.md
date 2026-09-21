@@ -959,6 +959,161 @@ de veinte entre `luna` y `sol`, sí es concluyente.
 
 ---
 
+## Tandas 15, 16 y 17 — Anthropic: el primer contraste con potencia estadística
+
+| | |
+|---|---|
+| **Identificadores** | `20260921T141839Z` (haiku), `20260921T142008Z` (sonnet), `20260921T142524Z` (opus) |
+| **Modelos** | `claude-haiku-4-5`, `claude-sonnet-5`, `claude-opus-5` |
+| **Casos** | 23, los mismos de las tandas de OpenAI |
+| **Instrucciones** | idénticas; solo cambia el proveedor |
+| **Tarifas** | verificadas el 21/09/2026 en la documentación de Anthropic |
+
+### Resultado
+
+| Modelo | Producto | Validación | RFQ exacta | Campos | Coste/pasada | Latencia p50 |
+|---|---|---|---|---|---|---|
+| `haiku-4-5` | 13/23 (56,5 %) | 13/23 | 14/23 | 52,8 % | 0,2641 $ | **3.475 ms** |
+| `sonnet-5` | **23/23 (100 %)** | **23/23** | **23/23** | **100 %** | 0,92 $ | 14.405 ms |
+| `opus-5` | **23/23 (100 %)** | **23/23** | **23/23** | **100 %** | 2,08 $ | 15.252 ms |
+
+### El primer contraste significativo del trabajo
+
+| Par | Discordantes | p |
+|---|---|---|
+| `haiku` vs `opus` | 10 | **0,002** |
+| `haiku` vs `sonnet` | 10 | **0,002** |
+| `opus` vs `sonnet` | 0 | sin potencia |
+
+Es la primera vez en todo el trabajo que un contraste de McNemar alcanza potencia.
+Los diez pares discordantes son además **todos en la misma dirección**: no hay un
+solo caso que `haiku` acierte y los otros dos fallen.
+
+La diferencia entre `haiku` y los otros dos es por tanto un resultado
+estadísticamente sostenido, no una impresión. La diferencia entre `sonnet` y
+`opus`, con cero pares discordantes, sigue sin resolución.
+
+### El fallo de `haiku`: no incumple la tarea, incumple el contrato de salida
+
+Siete de los diez fallos se registran como `MALFORMED`, la etiqueta que el
+evaluador reserva a una respuesta que no cumple el contrato pedido. La causa es
+única y llamativa: **`haiku` envuelve la salida en vallas de Markdown.**
+
+```
+```
+purpose: PAR_RATE_QUOTE
+notional: 50000000
+...
+```
+```
+
+Las instrucciones del especialista lo prohíben de forma explícita: *«No Markdown
+fences, no commentary»*. El modelo las ignora.
+
+**Y el contenido dentro de las vallas es correcto.** Se verificó quitándolas y
+volviendo a parsear: **ocho de los nueve mensajes afectados parsean sin un solo
+error**, con los términos económicos bien extraídos. El noveno añadía además prosa
+explicativa antes del mensaje.
+
+Es decir: `haiku` **comprende la tarea financiera y falla la convención de
+formato.** La distinción importa para la lectura del resultado y para la memoria:
+
+- Su 56,5 % **no mide comprensión del producto**, mide adherencia al contrato.
+- Un sistema de producción retiraría esas vallas en una línea de código, y con ello
+  la tasa de `haiku` subiría sustancialmente.
+- Se conserva el criterio estricto a propósito: emitir exactamente el formato
+  acordado **es parte de la tarea** en un sistema que encadena agentes, donde la
+  salida de uno es la entrada del siguiente. Un eslabón que añade adornos rompe la
+  cadena aunque su contenido sea impecable.
+
+Los otros fallos de `haiku` no son de formato: en tres casos dejó ausentes los
+veinte términos, y en la familia `no_valorables` acertó **cero de tres**, que es
+donde peor queda.
+
+También es el único modelo con un fallo de serialización del agente proto,
+`UNPARSEABLE=1`, por la misma razón.
+
+### `haiku` es rápido y no es barato
+
+Su latencia mediana, **3.475 ms**, es la mejor de los seis modelos evaluados —
+cuatro veces más rápido que `sonnet` y `opus`. Pero su coste por pasada, 0,2641 $,
+es **diez veces el de `gpt-5.6-luna`** (0,0278 $), que además acierta 22/23 frente
+a sus 13/23.
+
+El coste por caso válido lo expresa mejor: 0,0203 $ en `haiku` frente a 0,0013 $
+en `luna`. **Quince veces más caro por resultado utilizable, y peor.**
+
+### Comparación entre proveedores a coste equivalente
+
+`claude-sonnet-5` cuesta 2 $/10 $ por millón de tokens y `gpt-5.6-terra` 2 $/12 $:
+prácticamente la misma tarifa. Los dos firman **23/23 sin un solo fallo de campo**.
+
+| | `gpt-5.6-terra` | `claude-sonnet-5` |
+|---|---|---|
+| Acierto | 23/23 | 23/23 |
+| Coste por pasada | **0,2353 $** | 0,92 $ |
+| Coste por caso válido | **0,0102 $** | 0,0601 $ |
+| Latencia p50 | **9.011 ms** | 14.405 ms |
+| Tokens de entrada, especialista | 135.829 | 203.287 |
+
+A igualdad de tarifa por token, `sonnet` cuesta **cuatro veces más por pasada**.
+La causa está en el consumo: **consume un 50 % más de tokens de entrada y casi el
+triple de salida** para la misma tarea y las mismas instrucciones.
+
+Es un resultado que la tarifa por token no anticipa, y que solo aparece al medir
+sobre una tarea concreta: **el precio de lista no predice el coste de la tarea.**
+Conviene declararlo así en la memoria, porque es la justificación de haber medido
+coste extremo a extremo en lugar de comparar tarifas.
+
+### Resultado conjunto de los seis modelos
+
+| Modelo | Proveedor | Acierto | Coste/caso válido |
+|---|---|---|---|
+| `gpt-5.6-terra` | OpenAI | **23/23** | 0,0102 $ |
+| `claude-sonnet-5` | Anthropic | **23/23** | 0,0601 $ |
+| `claude-opus-5` | Anthropic | **23/23** | 0,0904 $ |
+| `gpt-5.6-sol` | OpenAI | **23/23** | 0,0182 $ |
+| `gpt-5.6-luna` | OpenAI | 22/23 | **0,0013 $** |
+| `claude-haiku-4-5` | Anthropic | 13/23 | 0,0203 $ |
+
+**Cuatro de los seis modelos resuelven la tarea sin un solo fallo.** La tarea es,
+por tanto, alcanzable con la generación actual, y la elección de modelo pasa a ser
+económica y no de capacidad.
+
+**`gpt-5.6-terra` es la recomendación global:** acierto perfecto al menor coste
+entre los que lo logran, y la latencia más baja de ese grupo.
+
+**`gpt-5.6-luna` es la opción cuando el coste manda:** un orden de magnitud más
+barato que cualquier otro, a cambio de un falso positivo de frontera de producto y
+una aritmética de fechas poco fiable.
+
+### Defecto de instrumentación corregido tras la tanda
+
+Los costes de `claude-sonnet-5` de esta tanda se calcularon con una tarifa
+equivocada, 3 $/15 $ en lugar de 2 $/10 $, porque la verificación de precios se
+hizo después de ejecutarla. El coste se calcula en el momento de la llamada y se
+guarda en la fila, de modo que corregir el fichero de tarifas no corrige las tandas
+ya medidas.
+
+Resuelto con `tools/recompute_costs.py`, que recalcula desde los tokens
+registrados: son un hecho de la ejecución y no cambian. Se corrigieron 56 llamadas,
+con una diferencia de −0,46 $ sobre la tanda. Las cifras de esta sección son las
+recalculadas.
+
+**Séptimo defecto de instrumentación del trabajo**, y el primero que no afecta a la
+medición de acierto sino a la de coste.
+
+### Limitaciones
+
+- **Una repetición por modelo.**
+- **Veintitrés casos**, once propuestos por el tutor y doce por el autor.
+- **La temperatura no es un eje**: el SDK de Anthropic no admite el parámetro.
+- **El criterio estricto sobre las vallas de Markdown** penaliza a `haiku` por una
+  convención de formato y no por comprensión del producto. Declararlo al presentar
+  su cifra.
+
+---
+
 ## Pendiente
 
 Relanzar las tres tandas con el defecto de `_check_schedules` corregido, para que

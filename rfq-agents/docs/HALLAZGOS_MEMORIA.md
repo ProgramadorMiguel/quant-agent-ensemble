@@ -136,7 +136,75 @@ Con detalle y citas en `CONVENCIONES_MERCADO.md`.
 
 ---
 
-## 7. Comparación de modelos: el eje de coste es el único concluyente
+## 7. El precio de lista no predice el coste de la tarea
+
+`claude-sonnet-5` cuesta 2 $/10 $ por millón de tokens y `gpt-5.6-terra` 2 $/12 $:
+prácticamente la misma tarifa. Los dos resuelven los veintitrés casos sin un solo
+fallo de campo.
+
+| | `gpt-5.6-terra` | `claude-sonnet-5` |
+|---|---|---|
+| Coste por pasada | **0,2353 $** | 0,92 $ |
+| Tokens de entrada, especialista | 135.829 | 203.287 |
+| Tokens de salida, especialista | 6.818 | 18.986 |
+
+**A igualdad de tarifa, `sonnet` cuesta cuatro veces más por pasada**, porque
+consume un 50 % más de entrada y casi el triple de salida para la misma tarea y las
+mismas instrucciones.
+
+**La tesis:** comparar modelos por su tarifa publicada induce a error. El coste real
+depende de cuántos tokens gasta cada modelo en resolver la tarea concreta, y eso
+solo se sabe midiéndolo extremo a extremo. Es la justificación de haber
+instrumentado coste por pasada y por caso válido en lugar de comparar precios.
+
+---
+
+## 8. Un modelo puede comprender la tarea y fallar el contrato de salida
+
+`claude-haiku-4-5` obtuvo 13/23, la peor cifra de los seis modelos evaluados. Siete
+de sus diez fallos tienen una única causa: **envuelve la salida en vallas de
+Markdown**, que sus instrucciones prohíben explícitamente.
+
+Retirando las vallas, **ocho de los nueve mensajes afectados parsean sin un solo
+error**, con los términos económicos correctamente extraídos.
+
+**La tesis:** su 56,5 % no mide comprensión del producto financiero, mide adherencia
+a la convención de formato. La distinción es esencial al presentar la cifra, y tiene
+una consecuencia de diseño: en un sistema que encadena agentes, donde la salida de
+uno es la entrada del siguiente, **emitir exactamente el formato acordado es parte
+de la tarea**. Un eslabón que añade adornos rompe la cadena aunque su contenido sea
+impecable.
+
+Se mantiene el criterio estricto por esa razón, declarándolo. Un sistema de
+producción retiraría las vallas en una línea, y con ello la cifra de `haiku`
+subiría sustancialmente.
+
+---
+
+## 9. Cuatro de seis modelos resuelven la tarea sin fallos
+
+| Modelo | Proveedor | Acierto | Coste/caso válido | Latencia p50 |
+|---|---|---|---|---|
+| `gpt-5.6-terra` | OpenAI | **23/23** | 0,0102 $ | 9.011 ms |
+| `gpt-5.6-sol` | OpenAI | **23/23** | 0,0182 $ | 11.029 ms |
+| `claude-sonnet-5` | Anthropic | **23/23** | 0,0601 $ | 14.405 ms |
+| `claude-opus-5` | Anthropic | **23/23** | 0,0904 $ | 15.252 ms |
+| `gpt-5.6-luna` | OpenAI | 22/23 | **0,0013 $** | 7.153 ms |
+| `claude-haiku-4-5` | Anthropic | 13/23 | 0,0203 $ | **3.475 ms** |
+
+**La tesis:** la tarea es alcanzable con la generación actual de modelos, de modo
+que la elección deja de ser de capacidad y pasa a ser económica. **Recomendación
+global: `gpt-5.6-terra`**, acierto perfecto al menor coste entre los que lo logran.
+**`gpt-5.6-luna` cuando el coste manda**, un orden de magnitud más barato, a cambio
+de un falso positivo de frontera de producto y una aritmética de fechas poco fiable.
+
+**Primer contraste con potencia estadística del trabajo:** `haiku` frente a `opus`
+y frente a `sonnet` dan p = 0,002 con diez pares discordantes, todos en la misma
+dirección. Los demás pares siguen sin resolución.
+
+---
+
+## 10. Comparación dentro de OpenAI: el eje de coste es el único concluyente
 
 | Modelo | Acierto | Coste/pasada | Coste/caso válido |
 |---|---|---|---|

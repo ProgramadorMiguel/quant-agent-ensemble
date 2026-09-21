@@ -7,7 +7,7 @@
 # provenga de una.
 #
 #   https://platform.openai.com/docs/pricing
-#   https://www.anthropic.com/pricing  (pestaña API)
+#   https://docs.claude.com/en/docs/about-claude/pricing
 
 verified_on = "2026-09-21"
 
@@ -70,28 +70,41 @@ output_per_mtok = 8.00
 verified = false
 
 # --- Anthropic ------------------------------------------------------------
-# NO VERIFICADOS. La página pública que se pudo consultar el 2026-09-21 recoge
-# los planes de suscripción, no la tarifa por token de la API, y los nombres
-# exactos de los modelos no se pudieron confirmar. Verificar en la pestaña API de
-# anthropic.com/pricing antes de usarlos.
+# Verificados el 2026-09-21 en docs.claude.com/en/docs/about-claude/pricing,
+# tabla "Model pricing". La columna de caché es la de "cache hits and refreshes";
+# las escrituras en caché se facturan aparte y a mayor precio, pero el sistema no
+# las declara por separado y quedan contabilizadas como entrada a tarifa plena,
+# de modo que el coste que se informa es conservador.
+#
+# Los identificadores son los que figuran como "Claude API ID" en la tabla
+# comparativa de modelos.
+
+[models."claude-fable-5-1"]
+provider = "anthropic"
+input_per_mtok = 10.00
+cached_input_per_mtok = 0.25
+output_per_mtok = 50.00
+verified = true
+# Los aciertos de caché de este modelo se facturan a 0,025 veces la entrada, no a
+# las 0,1 veces habituales del resto.
 
 [models."claude-opus-5"]
 provider = "anthropic"
 input_per_mtok = 5.00
 cached_input_per_mtok = 0.50
 output_per_mtok = 25.00
-verified = false
+verified = true
 
 [models."claude-sonnet-5"]
 provider = "anthropic"
-input_per_mtok = 3.00
-cached_input_per_mtok = 0.30
-output_per_mtok = 15.00
-verified = false
+input_per_mtok = 2.00
+cached_input_per_mtok = 0.20
+output_per_mtok = 10.00
+verified = true
 
 [models."claude-haiku-4-5"]
 provider = "anthropic"
 input_per_mtok = 1.00
 cached_input_per_mtok = 0.10
 output_per_mtok = 5.00
-verified = false
+verified = true
