@@ -1,3 +1,2 @@
-Value as of 2026-09-01 an EUR basis swap of EUR 20,000,000 from 2026-09-01 to
-2031-09-01, paying 3M EURIBOR quarterly and receiving 6M EURIBOR semiannually
-plus 8bp.
+Cotizame un EUR basis swap de 20M a 5 anos, pago 3M EURIBOR y recibo 6M EURIBOR
+mas 8bp.

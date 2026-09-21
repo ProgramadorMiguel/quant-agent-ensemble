@@ -1,9 +1,10 @@
-notional: 250000
+purpose: VALUATION
+notional: 50000000
 currency: "USD"
 is_fixed_rate_receiver: true
 valuation_date: "2026-09-01"
 effective_date: "2026-09-01"
-maturity_date: "2031-09-01"
+maturity_date: "2029-09-01"
 discount_curve: "USD-SOFR"
 fixed_leg {
   rate: 0.0385
@@ -12,8 +13,6 @@ fixed_leg {
   payment_dates: "2027-09-01"
   payment_dates: "2028-09-01"
   payment_dates: "2029-09-01"
-  payment_dates: "2030-09-01"
-  payment_dates: "2031-09-01"
 }
 floating_leg {
   rate_type: OVERNIGHT_COMPOUNDED
@@ -24,6 +23,4 @@ floating_leg {
   payment_dates: "2027-09-01"
   payment_dates: "2028-09-01"
   payment_dates: "2029-09-01"
-  payment_dates: "2030-09-01"
-  payment_dates: "2031-09-01"
 }

@@ -1,6 +1,7 @@
+purpose: VALUATION
 notional: 4000000
 currency: "EUR"
-is_fixed_rate_receiver: false
+is_fixed_rate_receiver: true
 valuation_date: "2026-09-01"
 effective_date: "2026-09-01"
 maturity_date: "2027-09-01"

@@ -65,6 +65,10 @@ You cannot ask for clarification, so resolve doubt by these rules, in order:
    vanilla swap but omits economic terms — no rate, no notional, no dates —
    return `IRS`. Detecting and reporting what is missing belongs to a later
    stage. Incompleteness is never a reason to reject.
+
+   In particular, **a request with no fixed rate is the ordinary case**:
+   *"cotízame"*, *"please provide fixed rate"*, *"necesito precio"* are asking
+   for the rate. That is a quote request, and it is `IRS`.
 2. **Terse desk shorthand is never a reason to reject.** A request such as
    `val 2026-09-01, 10mm USD, rec 3,85% ann vs SOFR` is a vanilla swap written
    the way a desk writes it. Abbreviations, missing words, lowercase, comma

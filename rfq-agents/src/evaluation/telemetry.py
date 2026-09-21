@@ -81,6 +81,11 @@ ADDED_COLUMNS = {
         # primera. Permite medir cuanto aporta el bucle: si casi todo se resuelve
         # en la primera pasada, cuesta latencia y no compensa.
         "iterations": "INTEGER",
+        # Temperatura y fecha de referencia con las que se midio la fila. Sin
+        # ellas una tanda no es reproducible ni comparable: son los dos
+        # parametros que se barren en los experimentos.
+        "temperature": "REAL",
+        "as_of": "TEXT",
     },
 }
 

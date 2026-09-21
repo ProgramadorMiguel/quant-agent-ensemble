@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from datetime import date
 from pathlib import Path
 
 from app_service import generate_rfq_from_prompt
@@ -85,14 +86,32 @@ def report(result) -> None:
         for item in result.validation_errors:
             print(f"      - {item}")
 
-    print(f"4. Pasadas del bucle: {result.iterations}")
+    print(f"4. Pasadas del bucle de autocorreccion: {result.iterations}")
     for number, errors in enumerate(result.iteration_errors, start=1):
         print(f"   pasada {number} rechazada por:")
         for item in errors:
             print(f"      - {item}")
 
-    print(f"5. RFQ: {result.output_file_path or 'no generada'}")
-    print(f"6. Fidelidad del agente proto: {result.proto_agent.status}"
+    # Contrato de salida: o una RFQ bien conformada, o un motivo. Nunca ambas
+    # cosas a medias, y nunca una RFQ con huecos rellenados a ojo.
+    print()
+    if result.output_file_path:
+        print("RFQ GENERADA")
+        print(f"  {result.output_file_path}")
+    elif result.product_type != "IRS":
+        print("NO SE PUEDE GENERAR RFQ")
+        print("  El producto no es un swap de tipos vanilla en EUR o USD con")
+        print("  vencimiento de un ano o mas, que es el alcance del sistema.")
+    elif result.missing_fields:
+        print("NO SE PUEDE GENERAR RFQ")
+        print("  Faltan terminos que la peticion no enuncia y que no se derivan")
+        print("  de ninguna convencion. Anadelos y vuelve a pedirlo.")
+    else:
+        print("NO SE PUEDE GENERAR RFQ")
+        print("  La peticion es incoherente y el sistema no ha logrado")
+        print(f"  corregirla en {result.iterations} pasadas.")
+
+    print(f"\nFidelidad del agente proto: {result.proto_agent.status}"
           + (f" ({result.proto_agent.error})" if result.proto_agent.error else ""))
 
 
@@ -107,6 +126,9 @@ def main() -> int:
     parser.add_argument("--model", help="sobreescribe el modelo de agents.yaml")
     parser.add_argument("--max-iterations", type=int, default=None,
                         help="cota de pasadas del bucle de autocorreccion")
+    parser.add_argument("--as-of", type=date.fromisoformat, default=None,
+                        help="fecha de referencia YYYY-MM-DD, por omision hoy. "
+                             "Resuelve 'spot' y las fechas relativas")
     args = parser.parse_args()
 
     try:
@@ -120,7 +142,8 @@ def main() -> int:
             print("No se ha dado ninguna peticion.", file=sys.stderr)
             return 1
         result = generate_rfq_from_prompt(
-            prompt, model_override=args.model, max_iterations=args.max_iterations
+            prompt, model_override=args.model,
+            max_iterations=args.max_iterations, as_of=args.as_of,
         )
     except KeyboardInterrupt:
         print("\nCancelado.", file=sys.stderr)

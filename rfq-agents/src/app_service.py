@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -75,8 +76,28 @@ def _retry_prompt(prompt: str, report: ValidationReport) -> str:
     )
 
 
+def _with_reference_date(prompt: str, as_of: date) -> str:
+    """Anade la fecha de referencia a la peticion.
+
+    Sin ella el sistema no puede resolver "spot", "el proximo lunes" ni una
+    estructura diferida como "2Y1Y": no son datos que la peticion contenga, sino
+    expresiones relativas a hoy, y hasta ahora el sistema no sabia que dia era.
+
+    Se suministra como contexto, no como instruccion, y por separado de la
+    peticion, de modo que quede claro que no forma parte de lo que pidio el
+    cliente.
+    """
+    return (
+        f"Reference date: {as_of.isoformat()} "
+        f"({as_of.strftime('%A')}).\n\n"
+        f"Request:\n{prompt}"
+    )
+
+
 def generate_rfq_from_prompt(
-    prompt: str, *, model_override: str | None = None, max_iterations: int | None = None
+    prompt: str, *, model_override: str | None = None,
+    max_iterations: int | None = None, as_of: date | None = None,
+    temperature: float | None = None,
 ) -> RFQGenerationResult:
     """Servicio de aplicacion: de texto libre a RFQ, o a error.
 
@@ -97,10 +118,15 @@ def generate_rfq_from_prompt(
     settings = get_settings()
     if model_override:
         settings = Settings(settings.openai_api_key, model_override)
-    client = LLMClient(settings, PROJECT_ROOT, run_id)
+    client = LLMClient(settings, PROJECT_ROOT, run_id, temperature=temperature)
     limit = max_iterations or client.config.max_iterations
 
-    product_type = client.classify_product(prompt)
+    # La fecha de referencia se fija una vez por ejecucion. Pasarla explicitamente
+    # y no leer el reloj en cada paso mantiene reproducible una tanda de
+    # evaluacion: un caso dorado con "spot" tendria resultado distinto cada dia.
+    dated_prompt = _with_reference_date(prompt, as_of or date.today())
+
+    product_type = client.classify_product(dated_prompt)
     if product_type != "IRS":
         return RFQGenerationResult(
             run_id=run_id,
@@ -120,7 +146,7 @@ def generate_rfq_from_prompt(
     # repite: el orquestador ya ha dicho que es un IRS y ningun error de
     # convencion o de calendario cambia esa respuesta, de modo que repetirla
     # gastaria una llamada sin poder alterar el resultado.
-    attempt_prompt = prompt
+    attempt_prompt = dated_prompt
     history: list[tuple[str, ...]] = []
     for iteration in range(1, limit + 1):
         fields = with_defaults(client.extract_irs(attempt_prompt))
@@ -131,7 +157,7 @@ def generate_rfq_from_prompt(
         if report.is_valid or not report.retryable or iteration == limit:
             break
         history.append(tuple(report.errors))
-        attempt_prompt = _retry_prompt(prompt, report)
+        attempt_prompt = _retry_prompt(dated_prompt, report)
 
     report_path = output_dir / f"validation_{run_id}.txt"
     report_path.write_text(report.to_text(), encoding="utf-8")

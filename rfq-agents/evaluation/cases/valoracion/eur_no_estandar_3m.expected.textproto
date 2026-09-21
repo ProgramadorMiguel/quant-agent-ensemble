@@ -1,4 +1,5 @@
-notional: 10000000
+purpose: VALUATION
+notional: 20000000
 currency: "EUR"
 is_fixed_rate_receiver: false
 valuation_date: "2026-09-01"
@@ -6,7 +7,7 @@ effective_date: "2026-09-01"
 maturity_date: "2031-09-01"
 discount_curve: "EUR-ESTR"
 fixed_leg {
-  rate: 0.0275
+  rate: 0.028
   day_count: "30U/360"
   payment_frequency: "1Y"
   payment_dates: "2027-09-01"
@@ -18,18 +19,28 @@ fixed_leg {
 floating_leg {
   rate_type: IBOR
   index: "EURIBOR"
-  tenor: "6M"
+  tenor: "3M"
   day_count: "ACT/360"
-  payment_frequency: "6M"
-  forecast_curve: "EUR-EURIBOR-6M"
+  payment_frequency: "3M"
+  forecast_curve: "EUR-EURIBOR-3M"
+  payment_dates: "2026-12-01"
   payment_dates: "2027-03-01"
+  payment_dates: "2027-06-01"
   payment_dates: "2027-09-01"
+  payment_dates: "2027-12-01"
   payment_dates: "2028-03-01"
+  payment_dates: "2028-06-01"
   payment_dates: "2028-09-01"
+  payment_dates: "2028-12-01"
   payment_dates: "2029-03-01"
+  payment_dates: "2029-06-01"
   payment_dates: "2029-09-01"
+  payment_dates: "2029-12-01"
   payment_dates: "2030-03-01"
+  payment_dates: "2030-06-01"
   payment_dates: "2030-09-01"
+  payment_dates: "2030-12-01"
   payment_dates: "2031-03-01"
+  payment_dates: "2031-06-01"
   payment_dates: "2031-09-01"
 }

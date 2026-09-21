@@ -23,7 +23,8 @@ PROTO = ROOT / "protos/pricing.proto"
 CASES = ROOT / "evaluation/cases"
 
 EXPECTED_BY_FAMILY = {
-    "completos": "VALID",
+    "cotizacion": "VALID",
+    "valoracion": "VALID",
     "jerga": "VALID",
     "incompletos": "INVALID",
     "no_soportados": "NOT_RUN",
@@ -52,7 +53,9 @@ for prompt in sorted(CASES.rglob("*.prompt.txt")):
         problems += 1
         continue
 
-    report = validate_irs(fields)
+    # Se valida contra la peticion, igual que en produccion: un termino de
+    # convencion que la peticion enuncia se respeta aunque no sea el estandar.
+    report = validate_irs(fields, prompt.read_text(encoding="utf-8"))
     status = "VALID" if report.is_valid else "INVALID"
     ok = status == want
     detail = ""

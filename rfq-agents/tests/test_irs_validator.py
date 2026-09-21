@@ -36,12 +36,32 @@ def test_missing_mandatory_term_is_reported_and_not_retryable(eur_fields):
     assert not report.retryable
 
 
-def test_missing_rate_is_looked_up_inside_the_fixed_leg(eur_fields):
+def test_a_quote_request_without_a_rate_is_valid(quote_fields):
+    """El caso habitual en una mesa: el tipo fijo es lo que se pregunta."""
+    report = validate_irs(quote_fields)
+    assert report.is_valid, report.errors
+    assert report.missing_fields == []
+
+
+def test_a_quote_request_that_supplies_a_rate_is_incoherent(quote_fields, eur_fields):
+    fields = quote_fields.model_copy(update={"fixed_leg": eur_fields.fixed_leg})
+    report = validate_irs(fields)
+    assert not report.is_valid
+    assert any("does not supply one" in e for e in report.errors)
+
+
+def test_a_valuation_without_a_rate_is_incoherent(eur_fields):
+    """Valorar un swap ya contratado exige el tipo al que se cerro."""
     fields = eur_fields.model_copy(
         update={"fixed_leg": eur_fields.fixed_leg.model_copy(update={"rate": None})}
     )
     report = validate_irs(fields)
-    assert "fixed_leg.rate" in report.missing_fields
+    assert any("requires the rate it was traded at" in e for e in report.errors)
+
+
+def test_a_missing_purpose_is_reported(eur_fields):
+    report = validate_irs(eur_fields.model_copy(update={"purpose": None}))
+    assert "purpose" in report.missing_fields
 
 
 # --- Errores del modelo: se reintentan -----------------------------------

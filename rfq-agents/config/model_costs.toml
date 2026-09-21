@@ -1,48 +1,97 @@
-# Tarifas por millón de tokens, en dólares.
+# Tarifas por millón de tokens, en dólares, para el tramo de contexto corto y
+# procesamiento estándar.
 #
-# IMPORTANTE: los precios cambian. Antes de publicar cualquier cifra de coste en
-# la memoria, verifica cada fila contra la página de precios del proveedor y
-# actualiza 'verified_on'. Citar este fichero en el anexo de la memoria.
+# `verified = true` significa que la fila se ha contrastado contra la página de
+# precios del proveedor en la fecha de `verified_on`. El informe avisa de toda
+# fila sin verificar y no debe citarse en la memoria ninguna cifra de coste que
+# provenga de una.
 #
-#   openai.com/api/pricing
-#   anthropic.com/pricing
+#   https://platform.openai.com/docs/pricing
+#   https://www.anthropic.com/pricing  (pestaña API)
 
-verified_on = "2026-08-25"
+verified_on = "2026-09-21"
 
-# --- OpenAI ---------------------------------------------------------------
-# PENDIENTE DE VERIFICAR: confirmar estos dos valores antes de usarlos.
+# --- OpenAI, modelos actuales --------------------------------------------
+# Verificados el 2026-09-21 en platform.openai.com/docs/pricing, tabla
+# "Flagship models", modo estándar y contexto corto.
+
+[models."gpt-6-astra"]
+provider = "openai"
+input_per_mtok = 10.00
+cached_input_per_mtok = 1.00
+output_per_mtok = 50.00
+verified = true
+
+[models."gpt-5.6-sol"]
+provider = "openai"
+input_per_mtok = 4.00
+cached_input_per_mtok = 0.40
+output_per_mtok = 20.00
+verified = true
+# Precio promocional vigente al menos hasta el 21 de noviembre de 2026. Si la
+# memoria cita este coste, conviene hacer constar esa condición.
+
+[models."gpt-5.6-terra"]
+provider = "openai"
+input_per_mtok = 2.00
+cached_input_per_mtok = 0.20
+output_per_mtok = 12.00
+verified = true
+
+[models."gpt-5.6-luna"]
+provider = "openai"
+input_per_mtok = 0.20
+cached_input_per_mtok = 0.02
+output_per_mtok = 1.20
+verified = true
+
+# --- OpenAI, modelos anteriores ------------------------------------------
+# NO VERIFICADOS. El 2026-09-21 estos dos modelos ya no figuran en las tablas de
+# la página de precios, que recoge la generación gpt-5.6 y gpt-6. Siguen siendo
+# invocables por la API, pero su tarifa no se ha podido contrastar: las cifras de
+# abajo son las que tenía el fichero y se conservan solo para no perder el
+# historial de las tandas ya ejecutadas con ellos.
+#
+# No citar estos costes en la memoria. Si se quiere comparar coste entre modelos,
+# usar los de la generación actual, cuyas tarifas sí están verificadas.
+
 [models."gpt-4.1-mini"]
 provider = "openai"
 input_per_mtok = 0.40
-output_per_mtok = 1.60
 cached_input_per_mtok = 0.10
+output_per_mtok = 1.60
 verified = false
 
 [models."gpt-4.1"]
 provider = "openai"
 input_per_mtok = 2.00
-output_per_mtok = 8.00
 cached_input_per_mtok = 0.50
+output_per_mtok = 8.00
 verified = false
 
 # --- Anthropic ------------------------------------------------------------
+# NO VERIFICADOS. La página pública que se pudo consultar el 2026-09-21 recoge
+# los planes de suscripción, no la tarifa por token de la API, y los nombres
+# exactos de los modelos no se pudieron confirmar. Verificar en la pestaña API de
+# anthropic.com/pricing antes de usarlos.
+
 [models."claude-opus-5"]
 provider = "anthropic"
 input_per_mtok = 5.00
-output_per_mtok = 25.00
 cached_input_per_mtok = 0.50
-verified = true
+output_per_mtok = 25.00
+verified = false
 
 [models."claude-sonnet-5"]
 provider = "anthropic"
 input_per_mtok = 3.00
-output_per_mtok = 15.00
 cached_input_per_mtok = 0.30
-verified = true
+output_per_mtok = 15.00
+verified = false
 
 [models."claude-haiku-4-5"]
 provider = "anthropic"
 input_per_mtok = 1.00
-output_per_mtok = 5.00
 cached_input_per_mtok = 0.10
-verified = true
+output_per_mtok = 5.00
+verified = false

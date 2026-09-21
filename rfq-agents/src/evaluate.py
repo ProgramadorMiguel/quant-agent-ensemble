@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
@@ -67,6 +67,15 @@ def main() -> int:
     parser.add_argument("--cases", type=Path, default=PROJECT_ROOT / "evaluation/cases")
     parser.add_argument("--repetitions", type=int, default=1,
                         help="Runs per case. Above 1 measures run-to-run stability.")
+    # Fecha de referencia fija, no el reloj del sistema: un caso que dice "spot"
+    # daria un resultado distinto cada dia y la tanda no seria reproducible ni
+    # comparable con las anteriores.
+    parser.add_argument("--as-of", type=date.fromisoformat,
+                        default=date(2026, 9, 21),
+                        help="fecha de referencia YYYY-MM-DD para resolver 'spot' "
+                             "y las fechas relativas")
+    parser.add_argument("--temperature", type=float, default=None,
+                        help="sobreescribe la temperatura de agents.yaml")
     args = parser.parse_args()
 
     store = TelemetryStore(PROJECT_ROOT / "outputs/evaluations.db")
@@ -84,7 +93,9 @@ def main() -> int:
     batch_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
     failures = 0
-    print(f"tanda: {batch_id}\n")
+    print(f"tanda: {batch_id}   fecha de referencia: {args.as_of.isoformat()}"
+          + (f"   temperatura: {args.temperature}"
+             if args.temperature is not None else "") + "\n")
     print(f"{'model':<16} {'familia':<14} {'case':<22} {'rep':>3}  "
           f"{'campos':<9} {'detalle':<30} {'ms':>7}")
     print("-" * 110)
@@ -103,7 +114,9 @@ def main() -> int:
                 result = None
                 try:
                     result = generate_rfq_from_prompt(
-                        prompt_path.read_text(encoding="utf-8"), model_override=model
+                        prompt_path.read_text(encoding="utf-8"),
+                        model_override=model, as_of=args.as_of,
+                        temperature=args.temperature,
                     )
                     comparison = compare_fields(result.extracted_fields, expected)
                 except AgentOutputError as exc:
@@ -132,6 +145,7 @@ def main() -> int:
                     model=model, provider="openai", case_name=case_name,
                     family=family, batch_id=batch_id,
                     iterations=result.iterations if result else None,
+                    temperature=args.temperature, as_of=args.as_of.isoformat(),
                     repetition=repetition, topology="pipeline",
                     product_type=product_type,
                     expected_product_type=golden.product_type,

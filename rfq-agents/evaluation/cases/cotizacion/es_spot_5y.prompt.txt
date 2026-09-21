@@ -1,0 +1,2 @@
+Cotizame un IRS en EUR por 50M nocional a 5 anos empezando spot, pagamos fijo y
+recibimos EURIBOR 6M.

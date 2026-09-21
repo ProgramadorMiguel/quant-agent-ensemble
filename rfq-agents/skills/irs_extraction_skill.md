@@ -41,10 +41,33 @@ compounded swap against SOFR.** A fixed-versus-`SOFR 3M` swap does not exist.
 market conventions — a single period, no intermediate coupons — and is out of
 scope.
 
+## What the request is for: `purpose`
+
+A desk uses an RFQ for two different things, and **the fixed rate is what tells
+them apart.**
+
+| `purpose` | The client... | `fixed_leg.rate` |
+|---|---|---|
+| `PAR_RATE_QUOTE` | asks what rate you would quote | **absent** |
+| `VALUATION` | supplies the rate they traded at and asks what the swap is worth | **present** |
+
+`PAR_RATE_QUOTE` is the ordinary case. *"Cotízame"*, *"please provide fixed
+rate"*, *"necesito precio"*, *"¿cómo cotiza"*, *"pasanos precio"* are all quote
+requests: the pricing engine reads the curve and solves for the rate that makes
+the net present value zero. **Never invent a rate to fill the gap** — omitting it
+is the correct answer.
+
+`VALUATION` applies when the request states a rate: *"valórame un IRS 5Y EUR 10M
+al 2.85% fijo"*. Then extract that rate.
+
+Set `purpose` on every message. The two must agree: a quote request never carries
+a rate, and a valuation always does.
+
 ## Mandatory terms
 
-These seven cannot be derived from anything. If the request does not state a
-term, **omit it**: the system will report it and ask. Never invent one.
+Without these there is no swap, and nothing derives them. If the request does not
+state one and it cannot be resolved from the reference date, **omit it**: the
+system will report it and ask.
 
 | Field | Meaning |
 |---|---|
@@ -54,7 +77,71 @@ term, **omit it**: the system will report it and ask. Never invent one.
 | `valuation_date` | Date the swap is valued at, ISO `YYYY-MM-DD` |
 | `effective_date` | Start date, ISO `YYYY-MM-DD` |
 | `maturity_date` | End date, ISO `YYYY-MM-DD` |
-| `fixed_leg.rate` | Decimal fraction: `2.75%` becomes `0.0275`. The same rate applies to every period |
+
+## Resolving dates
+
+Every request arrives with a **reference date**, stated before the request itself.
+It is today's date on the desk. Use it to resolve anything expressed relative to
+now.
+
+| Written | Resolve to |
+|---|---|
+| `spot`, `spot start`, `empezando spot`, `T+2` | reference date + 2 business days |
+| nothing said about the start | same as spot: reference date + 2 business days |
+| `next Monday`, `el próximo lunes` | the first Monday after the reference date |
+| `24-Sep-2026`, `2026-09-24` | that date |
+
+**`valuation_date` is the reference date** unless the request names another one. A
+desk values a quote as of today.
+
+### Tenor into maturity
+
+A tenor states the length of the swap, and the maturity follows from it once the
+effective date is known. **Derive it.**
+
+- `5Y` or `a 5 años`, effective 2026-09-23 → maturity **2031-09-23**
+- `10Y`, effective 2026-09-24 → maturity **2036-09-24**
+- `3Y`, effective 2026-09-28 → maturity **2029-09-28**
+
+This is arithmetic on information the request gives you, not invention.
+
+### Forward starting swaps
+
+`2Y1Y` means the swap starts in two years and runs for one: *two years forward,
+one year long*. Read it against the reference date.
+
+- Reference 2026-09-21, `2Y1Y` → effective **2028-09-23** (spot in two years),
+  maturity **2029-09-23**
+- `1Y5Y` → starts in one year, runs five
+
+The same holds for `5Y forward 1Y` and `1Y into 5Y`.
+
+## Currency from the index
+
+The index names the currency, so a request that says `EURIBOR6M` without naming
+EUR still states its currency.
+
+| Index mentioned | `currency` |
+|---|---|
+| EURIBOR, ESTR | `EUR` |
+| SOFR | `USD` |
+
+This works in one direction only. If the request names a currency **and** an index
+that belongs to another one — a EUR swap against SOFR — that is not a vanilla swap
+in either currency: it is a two-currency product. Extract what the text says and
+let validation reject it.
+
+## Direction from intent
+
+The direction is usually explicit: *"pagamos fijo"*, *"recibo fijo"*, *"pay
+fixed"*, *"rec fixed"*, *"payer"*, *"receiver"*.
+
+When the request only describes an intent, read the economics. **Hedging against
+rising rates means paying fixed** — the client locks a cost and receives the
+floating leg: `is_fixed_rate_receiver: false`. *"Cobertura de tipo fijo"*,
+*"quiero fijar mi coste"*, *"protegerme de subidas"* all read the same way.
+
+If the intent is genuinely ambiguous, omit the field rather than guess.
 
 ## Derived terms
 
@@ -167,26 +254,104 @@ drop the maturity date to keep them even either.
 | `275bp`, `275 bps` | `0.0275` |
 | `+25bp` over an index | `spread` of `0.0025` |
 | `vs 6s`, `vs 6m` | floating `tenor` of `6M` |
-| `we pay fixed`, `pay fixed`, `payer` | `is_fixed_rate_receiver: false` |
-| `we receive fixed`, `rec fixed`, `receiver` | `is_fixed_rate_receiver: true` |
+| `we pay fixed`, `pay fixed`, `payer`, `pagamos fijo` | `is_fixed_rate_receiver: false` |
+| `we receive fixed`, `rec fixed`, `receiver`, `recibo fijo` | `is_fixed_rate_receiver: true` |
+| `Pay 5y 50m EURIBOR6M spot` | pays fixed, 5Y tenor, notional 50000000, EUR, spot start |
+| `100m`, `50M`, `25M` | notional in millions |
+| `2.50%`, `2,50 pct` | `0.025` |
 | `ann`, `annual` | `payment_frequency` of `1Y` |
 | `s/a`, `semi` | `payment_frequency` of `6M` |
 | `qtr`, `quarterly` | `payment_frequency` of `3M` |
 | `30/360`, `30U/360`, `30E/360` | `day_count` of `30U/360` |
 | `A/360`, `act/360` | `day_count` of `ACT/360` |
 
-A tenor such as `5y` describes the length of the swap. It is **not** a maturity
-date: never convert it into one.
+A tenor such as `5y` describes the length of the swap. Combined with the effective
+date it gives the maturity, as described under **Tenor into maturity** above.
 
 ## Worked examples
 
-### Minimal EUR request, everything derived
+### A quote request in Spanish, with a tenor and a spot start
+
+> Reference date: 2026-09-21 (Monday).
+>
+> Cotízame un IRS en EUR por 50M nocional a 5 años empezando spot, pagamos fijo
+> y recibimos EURIBOR 6M.
+
+Spot is the reference date plus two business days, 2026-09-23. The 5Y tenor puts
+the maturity five years later, 2031-09-23. There is no rate because the client is
+asking for it.
+
+```
+purpose: PAR_RATE_QUOTE
+notional: 50000000
+currency: "EUR"
+is_fixed_rate_receiver: false
+valuation_date: "2026-09-21"
+effective_date: "2026-09-23"
+maturity_date: "2031-09-23"
+discount_curve: "EUR-ESTR"
+fixed_leg {
+  day_count: "30U/360"
+  payment_frequency: "1Y"
+  payment_dates: "2027-09-23"
+  payment_dates: "2028-09-23"
+  payment_dates: "2029-09-23"
+  payment_dates: "2030-09-23"
+  payment_dates: "2031-09-23"
+}
+floating_leg {
+  rate_type: IBOR
+  index: "EURIBOR"
+  tenor: "6M"
+  day_count: "ACT/360"
+  payment_frequency: "6M"
+  forecast_curve: "EUR-EURIBOR-6M"
+  payment_dates: "2027-03-23"
+  payment_dates: "2027-09-23"
+  payment_dates: "2028-03-23"
+  payment_dates: "2028-09-23"
+  payment_dates: "2029-03-23"
+  payment_dates: "2029-09-23"
+  payment_dates: "2030-03-23"
+  payment_dates: "2030-09-23"
+  payment_dates: "2031-03-23"
+  payment_dates: "2031-09-23"
+}
+```
+
+No `fixed_leg.rate`. That is the point of the request.
+
+### Desk shorthand with no currency stated
+
+> Reference date: 2026-09-21 (Monday).
+>
+> Pay 5y 50m EURIBOR6M spot
+
+`EURIBOR6M` names the currency: EUR. `Pay` is the fixed leg. Same output as
+above.
+
+### A valuation of an existing swap
+
+> Valórame un IRS 5Y EUR 10M al 2.85% fijo, inicio 2026-09-23.
+
+```
+purpose: VALUATION
+fixed_leg {
+  rate: 0.0285
+  ...
+}
+```
+
+The rate is stated, so this is a valuation, and the rate is extracted.
+
+### Minimal EUR valuation, everything else derived
 
 > Value as of 2026-09-01 a vanilla EUR interest rate swap with notional
 > EUR 10,000,000, effective 2026-09-01 and maturing 2031-09-01. We pay fixed at
 > 2.75%.
 
 ```
+purpose: VALUATION
 notional: 10000000
 currency: "EUR"
 is_fixed_rate_receiver: false
@@ -230,6 +395,7 @@ floating_leg {
 > effective 2026-09-01, maturing 2029-09-01. The client receives fixed at 3.85%.
 
 ```
+purpose: VALUATION
 notional: 50000000
 currency: "USD"
 is_fixed_rate_receiver: true
@@ -261,12 +427,15 @@ No `tenor`, and both legs annual.
 
 ### Incomplete request
 
-> Value as of 2026-09-01 an EUR swap, notional EUR 5,000,000, from 2026-09-01 to
-> 2031-09-01. We pay fixed.
+> Reference date: 2026-09-21 (Monday).
+>
+> Cotízame un swap EUR a 5 años, pagamos fijo.
 
-The rate is missing and cannot be derived from anything. Extract what is there,
-derive the conventions, and **leave `fixed_leg.rate` absent**. The system will
-report that the rate has to be specified.
+The notional is missing and nothing derives it. Everything else resolves: spot
+start, 5Y maturity, EUR conventions, and `purpose: PAR_RATE_QUOTE` because no rate
+is given. **Leave `notional` absent** and the system will report it.
+
+An absent rate is not a gap here: it is what makes this a quote request.
 
 ## Output
 

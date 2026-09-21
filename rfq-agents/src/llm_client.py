@@ -47,12 +47,18 @@ class LLMClient:
         project_root: Path,
         run_id: str,
         config: AgentsConfig | None = None,
+        temperature: float | None = None,
     ):
         self.client = OpenAI(api_key=settings.openai_api_key)
         self.project_root = project_root
         self.run_id = run_id
         self.config = config or load_agents_config(project_root)
         self.model = settings.llm_model or self.config.model
+        # La temperatura se puede sobreescribir por ejecucion para barrerla como
+        # parametro de experimento sin editar el fichero de configuracion, que
+        # dejaria la tanda sin rastro de con que valor se midio.
+        self.temperature = (self.config.temperature if temperature is None
+                            else temperature)
         self.telemetry = TelemetryStore(project_root / "outputs/evaluations.db")
 
     def _system_prompt(self, agent: str) -> str:
@@ -69,7 +75,7 @@ class LLMClient:
                 model=self.model,
                 messages=[{"role": "system", "content": system},
                           {"role": "user", "content": user}],
-                temperature=self.config.temperature,
+                temperature=self.temperature,
             )
             content = response.choices[0].message.content
             if not content:

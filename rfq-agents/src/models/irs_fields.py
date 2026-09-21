@@ -11,6 +11,16 @@ IBOR = "IBOR"
 OVERNIGHT_COMPOUNDED = "OVERNIGHT_COMPOUNDED"
 RATE_TYPES = (IBOR, OVERNIGHT_COMPOUNDED)
 
+# Para que se pide la RFQ. Ver el enum RFQPurpose de pricing.proto.
+#
+# En una peticion de cotizacion el tipo fijo es lo que se pregunta: el motor lee
+# la curva y calcula el tipo que hace cero el valor presente neto. En una
+# valoracion el cliente aporta el tipo al que cerro la operacion y pide su valor
+# de mercado. La presencia del tipo es lo que distingue los dos casos.
+PAR_RATE_QUOTE = "PAR_RATE_QUOTE"
+VALUATION = "VALUATION"
+PURPOSES = (PAR_RATE_QUOTE, VALUATION)
+
 
 class _Extractable(BaseModel):
     """Base de los modelos de extraccion.
@@ -62,6 +72,7 @@ class IRSFields(_Extractable):
     de la pata flotante porque solo proyecta las fijaciones de esa pata.
     """
 
+    purpose: str | None = None
     notional: Decimal | None = None
     currency: str | None = None
     is_fixed_rate_receiver: bool | None = None

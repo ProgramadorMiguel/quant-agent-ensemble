@@ -5,9 +5,12 @@ anos lleva veinte fechas de pago en la pata flotante. Escribirlos a mano invita 
 la errata, y una errata en un caso dorado se lee luego como un fallo del modelo,
 que es exactamente el error que este trabajo ya ha cometido una vez.
 
-Este script declara cada caso por sus terminos economicos y deriva el resto de la
-convencion documentada en ``models.conventions``, la misma que el validador usa
-para comprobar. Las fechas las genera ``models.schedule``.
+Cada caso se declara por sus terminos economicos; el resto se deriva de la
+convencion documentada en ``models.conventions``, la misma que usa el validador.
+
+La fecha de referencia esta fijada: los casos que dicen "spot" o "el proximo
+lunes" se resuelven contra ella, de modo que el caso dorado no cambia de un dia
+para otro.
 
 Ejecutar desde la raiz del proyecto:  python tools/make_cases.py
 """
@@ -15,26 +18,44 @@ Ejecutar desde la raiz del proyecto:  python tools/make_cases.py
 from __future__ import annotations
 
 import sys
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from models.conventions import convention_for  # noqa: E402
-from models.irs_fields import OVERNIGHT_COMPOUNDED  # noqa: E402
+from models.irs_fields import PAR_RATE_QUOTE, VALUATION  # noqa: E402
 from models.schedule import add_months  # noqa: E402
 
 CASES_DIR = ROOT / "evaluation/cases"
 
+# Lunes 21 de septiembre de 2026. La misma que usa evaluate.py por omision.
+AS_OF = date(2026, 9, 21)
+
+
+def business_days_after(start: date, days: int) -> date:
+    """Suma dias habiles sin calendario de festivos, solo saltando el fin de
+    semana. Es la simplificacion que adopta todo el proyecto."""
+    current = start
+    remaining = days
+    while remaining:
+        current += timedelta(days=1)
+        if current.weekday() < 5:
+            remaining -= 1
+    return current
+
+
+SPOT = business_days_after(AS_OF, 2)           # 2026-09-23, miercoles
+NEXT_MONDAY = AS_OF + timedelta(days=7)        # 2026-09-28
+
+
+def years_after(start: date, years: int) -> date:
+    return add_months(start, 12 * years)
+
 
 def schedule(effective: date, maturity: date, frequency: str) -> list[str]:
-    """Fechas de pago: fin de cada periodo, terminando en el vencimiento.
-
-    El ultimo periodo puede ser mas corto que los demas. Eso es un periodo roto y
-    es legitimo: se conservan los pasos regulares y la ultima fecha es el
-    vencimiento.
-    """
+    """Fechas de pago: fin de cada periodo, terminando en el vencimiento."""
     months = {"1M": 1, "3M": 3, "6M": 6, "1Y": 12, "12M": 12}[frequency.upper()]
     dates: list[date] = []
     step = 1
@@ -48,215 +69,237 @@ def schedule(effective: date, maturity: date, frequency: str) -> list[str]:
     return [d.isoformat() for d in dates]
 
 
-def expected_textproto(
-    *, notional: int, currency: str, receiver: bool, valuation: str,
-    effective: str, maturity: str, rate: str, spread: str | None = None,
+def expected(
+    *, notional: int | None, currency: str, receiver: bool | None,
+    effective: date, maturity: date, rate: str | None = None,
+    valuation: date | None = None, spread: str | None = None,
+    tenor: str | None = None, frequency: str | None = None,
 ) -> str:
-    eff, mat = date.fromisoformat(effective), date.fromisoformat(maturity)
-    years = (mat - eff).days / 365.25
+    """Textproto esperado. ``rate=None`` produce una peticion de cotizacion."""
+    years = (maturity - effective).days / 365.25
     conv = convention_for(currency, years)
     if conv is None:
         raise SystemExit(f"Sin convencion para {currency} a {years:.2f} anos")
 
-    lines = [
-        f"notional: {notional}",
-        f'currency: "{currency}"',
-        f"is_fixed_rate_receiver: {'true' if receiver else 'false'}",
-        f'valuation_date: "{valuation}"',
-        f'effective_date: "{effective}"',
-        f'maturity_date: "{maturity}"',
+    float_tenor = tenor or conv.tenor
+    float_freq = frequency or conv.floating_payment_frequency
+    forecast = (f"EUR-EURIBOR-{float_tenor}" if currency == "EUR"
+                else conv.forecast_curve)
+
+    lines = [f"purpose: {VALUATION if rate else PAR_RATE_QUOTE}"]
+    if notional is not None:
+        lines.append(f"notional: {notional}")
+    lines.append(f'currency: "{currency}"')
+    if receiver is not None:
+        lines.append(f"is_fixed_rate_receiver: {'true' if receiver else 'false'}")
+    lines += [
+        f'valuation_date: "{(valuation or AS_OF).isoformat()}"',
+        f'effective_date: "{effective.isoformat()}"',
+        f'maturity_date: "{maturity.isoformat()}"',
         f'discount_curve: "{conv.discount_curve}"',
         "fixed_leg {",
-        f"  rate: {rate}",
+    ]
+    if rate:
+        lines.append(f"  rate: {rate}")
+    lines += [
         f'  day_count: "{conv.fixed_day_count}"',
         f'  payment_frequency: "{conv.fixed_payment_frequency}"',
     ]
     lines += [f'  payment_dates: "{d}"'
-              for d in schedule(eff, mat, conv.fixed_payment_frequency)]
+              for d in schedule(effective, maturity, conv.fixed_payment_frequency)]
     lines += ["}", "floating_leg {", f"  rate_type: {conv.rate_type}",
               f'  index: "{conv.index}"']
-    if conv.tenor:
-        lines.append(f'  tenor: "{conv.tenor}"')
+    if float_tenor:
+        lines.append(f'  tenor: "{float_tenor}"')
     if spread:
         lines.append(f"  spread: {spread}")
     lines += [
         f'  day_count: "{conv.floating_day_count}"',
-        f'  payment_frequency: "{conv.floating_payment_frequency}"',
-        f'  forecast_curve: "{conv.forecast_curve}"',
+        f'  payment_frequency: "{float_freq}"',
+        f'  forecast_curve: "{forecast}"',
     ]
     lines += [f'  payment_dates: "{d}"'
-              for d in schedule(eff, mat, conv.floating_payment_frequency)]
+              for d in schedule(effective, maturity, float_freq)]
     lines.append("}")
     return "\n".join(lines) + "\n"
 
 
-def drop(text: str, *paths: str) -> str:
-    """Quita lineas del textproto esperado, para los casos incompletos."""
-    keep = []
-    for line in text.splitlines():
-        field = line.strip().split(":")[0]
-        if field in paths:
-            continue
-        keep.append(line)
-    return "\n".join(keep) + "\n"
-
-
-def write(family: str, name: str, prompt: str, expected: str | None) -> None:
+def write(family: str, name: str, prompt: str, golden: str | None) -> None:
     folder = CASES_DIR / family
     folder.mkdir(parents=True, exist_ok=True)
     (folder / f"{name}.prompt.txt").write_text(prompt.strip() + "\n", encoding="utf-8")
-    if expected is None:
-        (folder / f"{name}.expected.product").write_text("UNSUPPORTED\n", encoding="utf-8")
-    else:
-        (folder / f"{name}.expected.textproto").write_text(expected, encoding="utf-8")
+    target = f"{name}.expected." + ("product" if golden is None else "textproto")
+    (folder / target).write_text(golden or "UNSUPPORTED\n", encoding="utf-8")
 
 
-# --------------------------------------------------------------------------
-# COMPLETOS: la peticion enuncia los siete obligatorios y nada mas. El sistema
-# debe derivar convenciones y calcular los dos calendarios.
-# --------------------------------------------------------------------------
+# ==========================================================================
+# COTIZACION. El caso habitual en una mesa: el cliente pide precio, asi que no
+# aporta el tipo fijo. Son los casos que propuso el tutor.
+# ==========================================================================
 
-write("completos", "eur_payer_5y", """
+write("cotizacion", "es_spot_5y", """
+Cotizame un IRS en EUR por 50M nocional a 5 anos empezando spot, pagamos fijo y
+recibimos EURIBOR 6M.
+""", expected(notional=50000000, currency="EUR", receiver=False,
+              effective=SPOT, maturity=years_after(SPOT, 5)))
+
+write("cotizacion", "en_spot_5y", """
+RFQ: 5Y EUR 100m IRS, Pay Fixed vs EURIBOR 6M, Spot start. Please provide fixed
+rate.
+""", expected(notional=100000000, currency="EUR", receiver=False,
+              effective=SPOT, maturity=years_after(SPOT, 5)))
+
+write("cotizacion", "es_fecha_explicita_10y", """
+Necesito precio para un Swap 10Y EUR 25M, recibo fijo contra 3M EURIBOR, start
+24-Sep-2026.
+""", expected(notional=25000000, currency="EUR", receiver=True,
+              effective=date(2026, 9, 24), maturity=date(2036, 9, 24),
+              tenor="3M", frequency="3M"))
+
+write("cotizacion", "usd_proximo_lunes_3y", """
+Como cotiza un IRS 3Y USD 10M empezando el proximo lunes? Nosotros pagamos la
+pata fija.
+""", expected(notional=10000000, currency="USD", receiver=False,
+              effective=NEXT_MONDAY, maturity=years_after(NEXT_MONDAY, 3)))
+
+write("cotizacion", "sin_convenciones_7y", """
+Pasanos precio para Swap EUR 15M a 7 anos, pagamos fijo.
+""", expected(notional=15000000, currency="EUR", receiver=False,
+              effective=SPOT, maturity=years_after(SPOT, 7)))
+
+write("cotizacion", "cobertura_usd_10y", """
+Quiero hacer una cobertura de tipo fijo a 10 anos en USD por 100M SOFR.
+""", expected(notional=100000000, currency="USD", receiver=False,
+              effective=SPOT, maturity=years_after(SPOT, 10)))
+
+# ==========================================================================
+# JERGA. La misma informacion en taquigrafia de mesa.
+# ==========================================================================
+
+write("jerga", "pay_5y_50m_spot", """
+Pay 5y 50m EURIBOR6M spot
+""", expected(notional=50000000, currency="EUR", receiver=False,
+              effective=SPOT, maturity=years_after(SPOT, 5)))
+
+write("jerga", "abreviado_eur_val", """
+val 2026-09-01, 10mm EUR from 2026-09-01 to 2031-09-01, pay 2,75%
+""", expected(notional=10000000, currency="EUR", receiver=False,
+              valuation=date(2026, 9, 1), effective=date(2026, 9, 1),
+              maturity=date(2031, 9, 1), rate="0.0275"))
+
+write("jerga", "abreviado_usd_val", """
+valn dt 2026-09-01. USD 250k, 2026-09-01 / 2031-09-01. rec fixed 385bp
+""", expected(notional=250000, currency="USD", receiver=True,
+              valuation=date(2026, 9, 1), effective=date(2026, 9, 1),
+              maturity=date(2031, 9, 1), rate="0.0385"))
+
+# ==========================================================================
+# VALORACION. El cliente aporta el tipo al que cerro y pide el valor.
+# ==========================================================================
+
+write("valoracion", "eur_payer_5y", """
 Value as of 2026-09-01 a vanilla EUR interest rate swap with notional
 EUR 10,000,000, effective 2026-09-01 and maturing 2031-09-01. We pay fixed at
 2.75%.
-""", expected_textproto(
-    notional=10000000, currency="EUR", receiver=False, valuation="2026-09-01",
-    effective="2026-09-01", maturity="2031-09-01", rate="0.0275"))
+""", expected(notional=10000000, currency="EUR", receiver=False,
+              valuation=date(2026, 9, 1), effective=date(2026, 9, 1),
+              maturity=date(2031, 9, 1), rate="0.0275"))
 
-write("completos", "eur_receiver_10y", """
-Please value as of 2026-10-01 an EUR interest rate swap of EUR 25,000,000
-running from 2026-10-01 to 2036-10-01. The client receives fixed at 3.10%.
-""", expected_textproto(
-    notional=25000000, currency="EUR", receiver=True, valuation="2026-10-01",
-    effective="2026-10-01", maturity="2036-10-01", rate="0.031"))
-
-write("completos", "eur_payer_1y", """
+write("valoracion", "eur_receiver_1y", """
 Value as of 2026-09-01 an EUR interest rate swap, notional EUR 4,000,000,
-effective 2026-09-01, maturing 2027-09-01. We pay fixed at 2.40%.
-""", expected_textproto(
-    notional=4000000, currency="EUR", receiver=False, valuation="2026-09-01",
-    effective="2026-09-01", maturity="2027-09-01", rate="0.024"))
+effective 2026-09-01, maturing 2027-09-01. The client receives fixed at 2.40%.
+""", expected(notional=4000000, currency="EUR", receiver=True,
+              valuation=date(2026, 9, 1), effective=date(2026, 9, 1),
+              maturity=date(2027, 9, 1), rate="0.024"))
 
-write("completos", "usd_receiver_sofr_3y", """
+write("valoracion", "usd_sofr_ois_3y", """
 Value as of 2026-09-01 a USD interest rate swap, notional USD 50,000,000,
 effective 2026-09-01, maturing 2029-09-01. The client receives fixed at 3.85%.
-""", expected_textproto(
-    notional=50000000, currency="USD", receiver=True, valuation="2026-09-01",
-    effective="2026-09-01", maturity="2029-09-01", rate="0.0385"))
+""", expected(notional=50000000, currency="USD", receiver=True,
+              valuation=date(2026, 9, 1), effective=date(2026, 9, 1),
+              maturity=date(2029, 9, 1), rate="0.0385"))
 
-write("completos", "usd_payer_sofr_7y", """
-Generate an RFQ for a USD interest rate swap, notional USD 20,000,000, valued as
-of 2026-09-15, starting 2026-09-15 and maturing 2033-09-15. We pay fixed at
-4.05%.
-""", expected_textproto(
-    notional=20000000, currency="USD", receiver=False, valuation="2026-09-15",
-    effective="2026-09-15", maturity="2033-09-15", rate="0.0405"))
-
-write("completos", "eur_broken_period", """
+write("valoracion", "eur_periodo_roto", """
 Value as of 2026-09-01 an EUR interest rate swap with notional EUR 7,500,000,
 effective 2026-09-01 and maturing 2030-03-01. We pay fixed at 2.95% plus a
 spread of 25bp on the floating leg.
-""", expected_textproto(
-    notional=7500000, currency="EUR", receiver=False, valuation="2026-09-01",
-    effective="2026-09-01", maturity="2030-03-01", rate="0.0295", spread="0.0025"))
+""", expected(notional=7500000, currency="EUR", receiver=False,
+              valuation=date(2026, 9, 1), effective=date(2026, 9, 1),
+              maturity=date(2030, 3, 1), rate="0.0295", spread="0.0025"))
 
-# --------------------------------------------------------------------------
-# INCOMPLETOS: falta un termino obligatorio, que no se deriva de nada. El sistema
-# debe reclamarlo y no reintentar.
-# --------------------------------------------------------------------------
+write("valoracion", "eur_no_estandar_3m", """
+Value as of 2026-09-01 an EUR interest rate swap, notional EUR 20,000,000,
+effective 2026-09-01, maturing 2031-09-01. We pay fixed at 2.80% against 3M
+EURIBOR paid quarterly.
+""", expected(notional=20000000, currency="EUR", receiver=False,
+              valuation=date(2026, 9, 1), effective=date(2026, 9, 1),
+              maturity=date(2031, 9, 1), rate="0.028",
+              tenor="3M", frequency="3M"))
 
-_eur_base = dict(notional=5000000, currency="EUR", receiver=False,
-                 valuation="2026-09-01", effective="2026-09-01",
-                 maturity="2031-09-01", rate="0.026")
-
-write("incompletos", "sin_tipo_fijo", """
-Value as of 2026-09-01 an EUR interest rate swap, notional EUR 5,000,000, from
-2026-09-01 to 2031-09-01. We pay fixed.
-""", drop(expected_textproto(**_eur_base), "rate"))
+# ==========================================================================
+# INCOMPLETOS. Falta un termino sin el que no hay swap. El sistema debe decirlo.
+# Un tipo fijo ausente NO entra aqui: eso es una cotizacion.
+# ==========================================================================
 
 write("incompletos", "sin_nocional", """
-Value as of 2026-09-01 an EUR interest rate swap from 2026-09-01 to 2031-09-01.
-We pay fixed at 2.60%.
-""", drop(expected_textproto(**_eur_base), "notional"))
-
-write("incompletos", "sin_fecha_valoracion", """
-RFQ for an EUR interest rate swap, notional EUR 5,000,000, effective 2026-09-01
-and maturing 2031-09-01. We pay fixed at 2.60%.
-""", drop(expected_textproto(**_eur_base), "valuation_date"))
+Cotizame un swap EUR a 5 anos, pagamos fijo.
+""", expected(notional=None, currency="EUR", receiver=False,
+              effective=SPOT, maturity=years_after(SPOT, 5)))
 
 write("incompletos", "sin_direccion", """
-Value as of 2026-09-01 an EUR interest rate swap, notional EUR 5,000,000, from
-2026-09-01 to 2031-09-01, with a fixed rate of 2.60%.
-""", drop(expected_textproto(**_eur_base), "is_fixed_rate_receiver"))
+Cotizame un IRS EUR 10M a 5 anos empezando spot.
+""", expected(notional=10000000, currency="EUR", receiver=None,
+              effective=SPOT, maturity=years_after(SPOT, 5)))
 
-# --------------------------------------------------------------------------
-# JERGA: la misma informacion en taquigrafia de mesa.
-# --------------------------------------------------------------------------
-
-write("jerga", "abreviado_eur", """
-val 2026-09-01, 10mm EUR from 2026-09-01 to 2031-09-01, pay 2,75%
-""", expected_textproto(
-    notional=10000000, currency="EUR", receiver=False, valuation="2026-09-01",
-    effective="2026-09-01", maturity="2031-09-01", rate="0.0275"))
-
-write("jerga", "abreviado_usd", """
-valn dt 2026-09-01. USD 250k, 2026-09-01 / 2031-09-01. rec fixed 385bp
-""", expected_textproto(
-    notional=250000, currency="USD", receiver=True, valuation="2026-09-01",
-    effective="2026-09-01", maturity="2031-09-01", rate="0.0385"))
-
-write("jerga", "abreviado_eur_spread", """
-Desk request, valn 2026-09-01. EUR 30mm, eff 2026-09-01, mat 2033-09-01.
-client pays fixed 3,20 pct, floating +15bp
-""", expected_textproto(
-    notional=30000000, currency="EUR", receiver=False, valuation="2026-09-01",
-    effective="2026-09-01", maturity="2033-09-01", rate="0.032", spread="0.0015"))
-
-# --------------------------------------------------------------------------
-# NO SOPORTADOS: el orquestador debe detenerlos.
-# --------------------------------------------------------------------------
+# ==========================================================================
+# NO SOPORTADOS. El sistema debe rechazarlos y decir por que.
+# ==========================================================================
 
 write("no_soportados", "swaption", """
-Price a European swaption on a 5-year EUR interest rate swap, notional
-EUR 10,000,000, expiring 2027-09-01, strike 2.75%, payer.
+Necesito precio para una Swaption payer 1Y5Y sobre EURIBOR 6M strike 2.50%.
 """, None)
 
 write("no_soportados", "basis_swap", """
-Value as of 2026-09-01 an EUR basis swap of EUR 20,000,000 from 2026-09-01 to
-2031-09-01, paying 3M EURIBOR quarterly and receiving 6M EURIBOR semiannually
-plus 8bp.
+Cotizame un EUR basis swap de 20M a 5 anos, pago 3M EURIBOR y recibo 6M EURIBOR
+mas 8bp.
 """, None)
 
 write("no_soportados", "gbp_fuera_alcance", """
-Value as of 2026-09-01 a GBP interest rate swap, notional GBP 15,000,000,
-effective 2026-09-01, maturing 2028-09-01. The client receives fixed at 4.10%.
+Cotizame un IRS GBP 15M a 2 anos, recibimos fijo contra SONIA.
 """, None)
 
 write("no_soportados", "menos_de_un_ano", """
-Value as of 2026-09-01 an EUR interest rate swap, notional EUR 5,000,000,
-effective 2026-09-01, maturing 2027-03-01. We pay fixed at 2.10%.
+Cotizame un IRS EUR 5M a 6 meses, pagamos fijo.
 """, None)
 
-# --------------------------------------------------------------------------
-# EXAMPLES: prompts de demostracion para runner.py, sin fichero esperado.
-# --------------------------------------------------------------------------
+write("no_soportados", "eur_contra_sofr", """
+Cotizame un Swap EUR 20M a 5 anos pagando fijo contra SOFR.
+""", None)
+
+write("no_soportados", "fechas_desordenadas", """
+IRS 5Y EUR 10M, inicio 10-Oct-2026 y vencimiento 10-Oct-2024.
+""", None)
+
+# ==========================================================================
+# EXAMPLES: prompts de demostracion para runner.py.
+# ==========================================================================
 
 EXAMPLES = ROOT / "examples"
 EXAMPLES.mkdir(exist_ok=True)
 for name, source in (
-    ("eur_minimal.txt", "completos/eur_payer_5y"),
-    ("usd_sofr_ois.txt", "completos/usd_receiver_sofr_3y"),
-    ("broken_period.txt", "completos/eur_broken_period"),
-    ("incomplete.txt", "incompletos/sin_tipo_fijo"),
-    ("desk_shorthand.txt", "jerga/abreviado_usd"),
+    ("cotizacion_es.txt", "cotizacion/es_spot_5y"),
+    ("cotizacion_jerga.txt", "jerga/pay_5y_50m_spot"),
+    ("cotizacion_usd.txt", "cotizacion/cobertura_usd_10y"),
+    ("valoracion.txt", "valoracion/eur_payer_5y"),
+    ("incompleta.txt", "incompletos/sin_nocional"),
+    ("rechazada.txt", "no_soportados/swaption"),
 ):
-    text = (CASES_DIR / f"{source}.prompt.txt").read_text(encoding="utf-8")
-    (EXAMPLES / name).write_text(text, encoding="utf-8")
+    (EXAMPLES / name).write_text(
+        (CASES_DIR / f"{source}.prompt.txt").read_text(encoding="utf-8"),
+        encoding="utf-8")
 
+print(f"Fecha de referencia {AS_OF}, spot {SPOT}, proximo lunes {NEXT_MONDAY}")
 total = len(list(CASES_DIR.rglob("*.prompt.txt")))
-print(f"{total} casos escritos en {CASES_DIR}")
+print(f"{total} casos en {CASES_DIR}")
 for folder in sorted(p for p in CASES_DIR.iterdir() if p.is_dir()):
-    n = len(list(folder.glob("*.prompt.txt")))
-    print(f"  {folder.name:<16} {n}")
-print(f"{len(list(EXAMPLES.glob('*.txt')))} prompts de ejemplo en {EXAMPLES}")
+    print(f"  {folder.name:<16} {len(list(folder.glob('*.prompt.txt')))}")

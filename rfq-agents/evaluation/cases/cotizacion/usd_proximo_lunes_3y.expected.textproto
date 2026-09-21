@@ -1,0 +1,25 @@
+purpose: PAR_RATE_QUOTE
+notional: 10000000
+currency: "USD"
+is_fixed_rate_receiver: false
+valuation_date: "2026-09-21"
+effective_date: "2026-09-28"
+maturity_date: "2029-09-28"
+discount_curve: "USD-SOFR"
+fixed_leg {
+  day_count: "ACT/360"
+  payment_frequency: "1Y"
+  payment_dates: "2027-09-28"
+  payment_dates: "2028-09-28"
+  payment_dates: "2029-09-28"
+}
+floating_leg {
+  rate_type: OVERNIGHT_COMPOUNDED
+  index: "SOFR"
+  day_count: "ACT/360"
+  payment_frequency: "1Y"
+  forecast_curve: "USD-SOFR"
+  payment_dates: "2027-09-28"
+  payment_dates: "2028-09-28"
+  payment_dates: "2029-09-28"
+}

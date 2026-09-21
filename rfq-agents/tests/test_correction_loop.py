@@ -14,7 +14,13 @@ import pytest
 
 import app_service
 from app_service import generate_rfq_from_prompt
-from models.irs_fields import IBOR, FixedLegFields, FloatingLegFields, IRSFields
+from models.irs_fields import (
+    IBOR,
+    VALUATION,
+    FixedLegFields,
+    FloatingLegFields,
+    IRSFields,
+)
 
 
 PROMPT = "Value as of 2026-09-01 an EUR swap, 10mm, 2026-09-01 to 2031-09-01, pay 2.75%"
@@ -48,6 +54,7 @@ def _fields(**overrides) -> IRSFields:
 
     effective, maturity = date(2026, 9, 1), date(2031, 9, 1)
     base = IRSFields(
+        purpose=VALUATION,
         notional=Decimal("10000000"), currency="EUR", is_fixed_rate_receiver=False,
         valuation_date=effective, effective_date=effective, maturity_date=maturity,
         discount_curve="EUR-ESTR",
@@ -79,11 +86,9 @@ def _impossible_year() -> IRSFields:
     return _fields(effective_date=date(1050, 3, 1))
 
 
-def _missing_rate() -> IRSFields:
-    good = _fields()
-    return good.model_copy(update={
-        "fixed_leg": good.fixed_leg.model_copy(update={"rate": None})
-    })
+def _missing_notional() -> IRSFields:
+    """Un termino sin el que no hay swap, y que no se deriva de nada."""
+    return _fields(notional=None)
 
 
 @pytest.fixture
@@ -148,12 +153,12 @@ def test_the_limit_is_configurable(patched):
 
 def test_a_missing_mandatory_term_is_not_retried(patched):
     """La peticion no contiene el dato: ninguna pasada adicional lo va a producir."""
-    client = patched([_missing_rate()])
+    client = patched([_missing_notional()])
     result = generate_rfq_from_prompt(PROMPT)
     assert result.validation_status == "INVALID"
     assert result.iterations == 1
     assert len(client.prompts) == 1
-    assert "fixed_leg.rate" in result.missing_fields
+    assert "notional" in result.missing_fields
 
 
 def test_a_sanity_violation_is_retried(patched):

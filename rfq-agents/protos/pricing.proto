@@ -34,6 +34,24 @@ message RFQ {
 // plazo (EURIBOR 6M); un swap contra un tipo a un dia capitaliza las fijaciones
 // diarias a lo largo del periodo y no tiene plazo de fijacion. Tras el cese del
 // LIBOR en junio de 2023, el swap vanilla en dolares es de la segunda clase.
+// Para que se pide la RFQ. Determina el papel del tipo fijo y, con el, lo que el
+// motor de valoracion tiene que calcular.
+//
+// No es un adorno: son los dos usos que tiene una RFQ en una mesa, y se
+// distinguen precisamente por la presencia del tipo fijo.
+enum RFQPurpose {
+  RFQ_PURPOSE_UNSPECIFIED = 0;
+  // Peticion de cotizacion de un swap par, el caso habitual. El cliente no
+  // aporta el tipo fijo porque es lo que esta pidiendo: el motor lee la curva y
+  // calcula el tipo que hace cero el valor presente neto, que es la ecuacion
+  // 2.42 del libro de referencia. fixed_leg.rate queda ausente.
+  PAR_RATE_QUOTE = 1;
+  // Valoracion de un swap ya contratado. El cliente aporta el tipo fijo al que
+  // cerro la operacion y pide su valor de mercado o sus metricas de riesgo.
+  // fixed_leg.rate viene dado.
+  VALUATION = 2;
+}
+
 enum FloatingRateType {
   FLOATING_RATE_TYPE_UNSPECIFIED = 0;
   // Indice con plazo de fijacion, una fijacion por periodo. EURIBOR.
@@ -43,6 +61,9 @@ enum FloatingRateType {
 }
 
 message InterestRateSwap {
+  // Que se pide con esta RFQ. Coherente con la presencia de fixed_leg.rate.
+  optional RFQPurpose purpose = 11;
+
   // Terminos comunes a las dos patas. La Definicion 2.19 exige misma divisa,
   // mismo nocional y mismo vencimiento en las dos.
   optional double notional = 1;
@@ -70,6 +91,9 @@ message InterestRateSwap {
 message FixedLeg {
   // Tipo fijo k de la ecuacion 2.38, en tanto por uno. El mismo para todos los
   // periodos: no se contemplan tipos escalonados.
+  //
+  // Ausente cuando purpose es PAR_RATE_QUOTE: en una peticion de cotizacion el
+  // tipo es lo que se pregunta, no lo que se aporta.
   optional double rate = 1;
 
   // Base de calculo con la que se obtiene la fraccion de ano tau_i.

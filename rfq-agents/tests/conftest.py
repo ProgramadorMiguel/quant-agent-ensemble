@@ -19,6 +19,8 @@ if str(SRC) not in sys.path:
 from models.irs_fields import (  # noqa: E402
     IBOR,
     OVERNIGHT_COMPOUNDED,
+    PAR_RATE_QUOTE,
+    VALUATION,
     FixedLegFields,
     FloatingLegFields,
     IRSFields,
@@ -50,6 +52,7 @@ def eur_fields():
     flotante.
     """
     return IRSFields(
+        purpose=VALUATION,
         notional=Decimal("10000000"), currency="EUR",
         is_fixed_rate_receiver=False,
         valuation_date=EFFECTIVE, effective_date=EFFECTIVE, maturity_date=MATURITY,
@@ -74,6 +77,7 @@ def usd_fields():
     Ambas patas anuales en ACT/360, descuento y estimacion en USD-SOFR.
     """
     return IRSFields(
+        purpose=VALUATION,
         notional=Decimal("50000000"), currency="USD",
         is_fixed_rate_receiver=True,
         valuation_date=EFFECTIVE, effective_date=EFFECTIVE, maturity_date=MATURITY,
@@ -89,3 +93,16 @@ def usd_fields():
             payment_dates=regular_dates(EFFECTIVE, 12, 5),
         ),
     )
+
+
+@pytest.fixture
+def quote_fields(eur_fields):
+    """Peticion de cotizacion: sin tipo fijo, porque es lo que se pregunta.
+
+    Es el caso habitual en una mesa. El motor lee la curva y calcula el tipo que
+    hace cero el valor presente neto; el cliente no lo aporta.
+    """
+    return eur_fields.model_copy(update={
+        "purpose": PAR_RATE_QUOTE,
+        "fixed_leg": eur_fields.fixed_leg.model_copy(update={"rate": None}),
+    })

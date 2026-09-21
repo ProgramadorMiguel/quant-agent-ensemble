@@ -28,13 +28,28 @@ from models.conventions import (
     expected_values,
     stated_in,
 )
-from models.irs_fields import IBOR, OVERNIGHT_COMPOUNDED, RATE_TYPES, IRSFields
+from models.irs_fields import (
+    IBOR,
+    OVERNIGHT_COMPOUNDED,
+    PAR_RATE_QUOTE,
+    PURPOSES,
+    RATE_TYPES,
+    VALUATION,
+    IRSFields,
+)
 from models.schedule import FREQUENCY_MONTHS, payment_dates
 
 
-# Terminos que la peticion debe enunciar. No se derivan de ninguna convencion.
+# Terminos sin los cuales no hay swap. No se derivan de ninguna convencion ni de
+# ninguna fecha de referencia.
+#
+# El tipo fijo NO esta en esta lista, y esa ausencia es una decision de diseno. En
+# una peticion de cotizacion, que es el caso habitual en una mesa, el tipo fijo es
+# precisamente lo que el cliente pregunta: el motor lee la curva y calcula el tipo
+# que hace cero el valor presente neto. Exigirlo convertia en invalida la forma
+# normal de pedir precio.
 REQUIRED_TERMS: tuple[tuple[str, str], ...] = (
-    ("rate", "el tipo fijo"),
+    ("purpose", "si se pide cotizacion o valoracion de un swap ya contratado"),
     ("maturity_date", "la fecha de vencimiento"),
     ("valuation_date", "la fecha de valoracion"),
     ("effective_date", "la fecha de inicio"),
@@ -188,6 +203,30 @@ def _check_sanity(fields: IRSFields, errors: list[str]) -> None:
             errors.append("valuation_date must not be after maturity_date")
 
 
+def _check_purpose(fields: IRSFields, errors: list[str]) -> None:
+    """Coherencia entre el proposito de la RFQ y la presencia del tipo fijo.
+
+    Es una comprobacion entre atributos, no sobre un campo aislado: los dos usos
+    de una RFQ se distinguen exactamente por ese dato, y cualquiera de las dos
+    incoherencias describe una peticion que el motor no sabria atender.
+    """
+    purpose = fields.purpose
+    rate = fields.fixed_leg.rate
+    if purpose is not None and purpose not in PURPOSES:
+        errors.append(f"purpose must be one of {', '.join(PURPOSES)}")
+        return
+    if purpose == PAR_RATE_QUOTE and rate is not None:
+        errors.append(
+            "purpose is PAR_RATE_QUOTE but fixed_leg.rate is present: a quote "
+            "request asks for the par rate, it does not supply one"
+        )
+    if purpose == VALUATION and rate is None:
+        errors.append(
+            "purpose is VALUATION but fixed_leg.rate is missing: valuing an "
+            "existing swap requires the rate it was traded at"
+        )
+
+
 def _check_enums(fields: IRSFields, errors: list[str]) -> None:
     for leg_name in ("fixed_leg", "floating_leg"):
         leg = getattr(fields, leg_name)
@@ -326,13 +365,12 @@ def validate_irs(fields: IRSFields, prompt: str | None = None) -> ValidationRepo
     missing: list[str] = []
     clarifications: list[str] = []
     for path, description in REQUIRED_TERMS:
-        # rate vive en la pata fija, pero para la peticion es un termino unico.
-        lookup = "fixed_leg.rate" if path == "rate" else path
-        if _get(fields, lookup) in (None, ""):
-            missing.append(lookup)
+        if _get(fields, path) in (None, ""):
+            missing.append(path)
             clarifications.append(description)
 
     errors: list[str] = []
+    _check_purpose(fields, errors)
     _check_sanity(fields, errors)
     _check_enums(fields, errors)
     _check_convention(fields, errors, prompt)

@@ -53,6 +53,7 @@ def fields_to_textproto(fields: IRSFields, rfq_id: str, proto_path: Path) -> str
     pb = _load_pricing_module(proto_path)
     message = pb.RFQ(rfq_id=rfq_id)
     irs = message.irs
+    irs.purpose = pb.RFQPurpose.Value(fields.purpose)
     irs.notional = float(fields.notional)
     irs.currency = fields.currency
     irs.is_fixed_rate_receiver = bool(fields.is_fixed_rate_receiver)
@@ -61,7 +62,10 @@ def fields_to_textproto(fields: IRSFields, rfq_id: str, proto_path: Path) -> str
     irs.maturity_date = fields.maturity_date.isoformat()
     irs.discount_curve = fields.discount_curve
 
-    irs.fixed_leg.rate = float(fields.fixed_leg.rate)
+    # En una peticion de cotizacion el tipo fijo queda ausente a proposito: es lo
+    # que el motor de valoracion tiene que calcular.
+    if fields.fixed_leg.rate is not None:
+        irs.fixed_leg.rate = float(fields.fixed_leg.rate)
     irs.fixed_leg.day_count = fields.fixed_leg.day_count
     irs.fixed_leg.payment_frequency = fields.fixed_leg.payment_frequency
     irs.fixed_leg.payment_dates.extend(
@@ -104,7 +108,10 @@ def parse_irs_textproto(proto_text: str, proto_path: Path) -> IRSFields:
     fixed = message.fixed_leg
     floating = message.floating_leg
     rate_type = present(floating, "rate_type")
+    purpose = present(message, "purpose")
     return IRSFields.model_validate({
+        "purpose": (pb.RFQPurpose.Name(purpose)
+                    if purpose not in (None, 0) else None),
         "notional": present(message, "notional"),
         "currency": present(message, "currency"),
         "is_fixed_rate_receiver": present(message, "is_fixed_rate_receiver"),

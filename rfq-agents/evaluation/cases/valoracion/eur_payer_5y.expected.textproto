@@ -1,3 +1,4 @@
+purpose: VALUATION
 notional: 10000000
 currency: "EUR"
 is_fixed_rate_receiver: false
