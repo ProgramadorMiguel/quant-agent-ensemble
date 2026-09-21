@@ -59,16 +59,22 @@ term, **omit it**: the system will report it and ask. Never invent one.
 ## Derived terms
 
 Everything else follows from the currency and the maturity: derive it from the
-tables below.
+tables below **when the request is silent**.
 
-**The convention is mandatory, not a default.** The system supports
-standard-convention swaps only. If the request states a term that contradicts the
-convention for its currency and maturity — a five-year EUR swap against EURIBOR
-3M, say — emit the conventional value anyway. Such a trade exists in the market,
-but it is out of scope here, and validation will reject anything else.
+**A term the request states always wins over the convention.** A five-year EUR
+swap against EURIBOR 3M paid quarterly is not standard, but it trades, and it is
+supported: extract 3M because that is what was asked for. Only fill in from the
+table what the request does not mention.
 
-When the request restates a term that agrees with the convention, nothing changes:
-emit the same value.
+Two terms are the exception, because they follow from the currency rather than
+being a matter of convention: `floating_leg.rate_type` and `floating_leg.index`.
+EUR means an `IBOR` leg against EURIBOR; USD means an `OVERNIGHT_COMPOUNDED` leg
+against SOFR. A EUR swap against SOFR would be a two-currency product, which is
+out of scope.
+
+When a stated frequency differs from the table, **the payment schedule follows the
+stated frequency**: quarterly payments on a five-year swap mean twenty dates, not
+ten.
 
 ### EUR, maturity of exactly one year
 

@@ -17,11 +17,11 @@ enters the system, and it is measured field by field.
 **1. Extract what the text states.** The seven mandatory terms come from the
 request and from nowhere else.
 
-**2. Derive what the market convention implies.** Day counts, payment
-frequencies, the index, the rate type and both curves follow from the currency
-and the maturity. The skill gives you the tables. The convention is mandatory:
-the system supports standard-convention swaps only, so emit the conventional
-value even when the request states something else.
+**2. Derive what the market convention implies, for the terms the request does
+not mention.** Day counts, payment frequencies, the tenor and both curves follow
+from the currency and the maturity; the skill gives you the tables. A term the
+request states wins over the table, even when it is not the standard convention.
+The rate type and the index are the exception: they follow from the currency.
 
 **3. Build both payment schedules.** Step forward from the effective date in
 increments of each leg's payment frequency, ending exactly on the maturity date.

@@ -86,8 +86,89 @@ def convention_for(currency: str | None, years: float | None) -> Convention | No
     return None
 
 
-def expected_values(convention: Convention) -> dict[str, object]:
-    """Convencion como rutas de campo, para contrastarla con lo extraido."""
+# Formas superficiales con las que una peticion puede enunciar cada termino
+# derivable. Sirven para distinguir "la peticion lo dijo" de "el modelo lo
+# derivo", que es la unica manera de admitir un swap de convencion no estandar
+# sin perder la comprobacion sobre lo que el modelo deriva por su cuenta.
+#
+# El vocabulario reproduce la tabla de taquigrafia del skill, de modo que las dos
+# piezas reconocen lo mismo. Cuando la peticion no usa ninguna de estas formas se
+# asume que no enuncio el termino y se exige la convencion: un falso negativo
+# devuelve al comportamiento estricto, que es el lado seguro del error.
+STATED_FORMS: dict[str, tuple[str, ...]] = {
+    "fixed_leg.day_count": (
+        "30/360", "30u/360", "30e/360", "act/360", "a/360",
+        "act/365", "a/365", "act/365.25",
+    ),
+    "floating_leg.day_count": (
+        "30/360", "30u/360", "30e/360", "act/360", "a/360",
+        "act/365", "a/365", "act/365.25",
+    ),
+    "fixed_leg.payment_frequency": (
+        "annual", "annually", "ann", "yearly", "1y",
+        "semiannual", "semiannually", "semi", "s/a", "6m",
+        "quarterly", "qtr", "3m", "monthly", "1m",
+    ),
+    "floating_leg.payment_frequency": (
+        "annual", "annually", "ann", "yearly", "1y",
+        "semiannual", "semiannually", "semi", "s/a", "6m",
+        "quarterly", "qtr", "3m", "monthly", "1m",
+    ),
+    "floating_leg.tenor": ("3m", "6m", "12m", "1y", "vs 3s", "vs 6s"),
+    "discount_curve": ("discount", "disc", "estr", "sofr"),
+    "floating_leg.forecast_curve": ("forecast", "fwd", "forward", "estimation"),
+}
+
+# Terminos que la peticion no puede sobreescribir, porque no son una convencion
+# elegible sino una consecuencia de la divisa. Un swap en euros contra SOFR no es
+# un vanilla con convencion distinta: es un producto de dos divisas, fuera de
+# alcance.
+NOT_OVERRIDABLE = ("floating_leg.rate_type", "floating_leg.index")
+
+
+def stated_in(prompt: str | None, path: str) -> bool:
+    """Si la peticion enuncia el termino ``path``.
+
+    Deteccion lexica sobre un vocabulario cerrado. Es una aproximacion: no
+    interpreta la frase, solo detecta que el termino se menciona. Basta para lo
+    que decide, que es si conviene exigir la convencion estandar o respetar lo
+    que la peticion pide.
+    """
+    if not prompt or path in NOT_OVERRIDABLE:
+        return False
+    text = prompt.lower()
+    return any(form in text for form in STATED_FORMS.get(path, ()))
+
+
+def forecast_curve_for(currency: str | None, tenor: str | None) -> str | None:
+    """Curva de estimacion que corresponde a un indice y su plazo de fijacion.
+
+    No es una convencion independiente: se deriva del tenor. Si la peticion pide
+    EURIBOR 3M en lugar del 6M estandar, la curva que proyecta esas fijaciones es
+    la de 3M, y exigir la del 6M seria incoherente con lo que se ha pedido.
+    """
+    if currency is None:
+        return None
+    code = currency.upper()
+    if code == "USD":
+        return "USD-SOFR"  # tipo a un dia: no hay plazo del que derivar
+    if code == "EUR":
+        return f"EUR-EURIBOR-{tenor}" if tenor else None
+    return None
+
+
+def expected_values(
+    convention: Convention, tenor: str | None = None, currency: str | None = None
+) -> dict[str, object]:
+    """Convencion como rutas de campo, para contrastarla con lo extraido.
+
+    ``tenor`` y ``currency`` son los valores realmente extraidos. Se usan para la
+    curva de estimacion, que se deriva del tenor y no del estandar: cuando la
+    peticion pide un tenor no estandar, la curva debe seguirlo.
+    """
+    forecast = forecast_curve_for(
+        currency or convention.index, tenor or convention.tenor
+    )
     return {
         "discount_curve": convention.discount_curve,
         "fixed_leg.day_count": convention.fixed_day_count,
@@ -97,5 +178,5 @@ def expected_values(convention: Convention) -> dict[str, object]:
         "floating_leg.tenor": convention.tenor,
         "floating_leg.day_count": convention.floating_day_count,
         "floating_leg.payment_frequency": convention.floating_payment_frequency,
-        "floating_leg.forecast_curve": convention.forecast_curve,
+        "floating_leg.forecast_curve": forecast or convention.forecast_curve,
     }

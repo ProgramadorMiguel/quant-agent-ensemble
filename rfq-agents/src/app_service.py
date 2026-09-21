@@ -124,7 +124,10 @@ def generate_rfq_from_prompt(
     history: list[tuple[str, ...]] = []
     for iteration in range(1, limit + 1):
         fields = with_defaults(client.extract_irs(attempt_prompt))
-        report = validate_irs(fields)
+        # Se valida contra la peticion ORIGINAL, no contra la del reintento: lo
+        # que importa es que enuncio el usuario, y el bloque de correccion que se
+        # anade en cada pasada no forma parte de su peticion.
+        report = validate_irs(fields, prompt)
         if report.is_valid or not report.retryable or iteration == limit:
             break
         history.append(tuple(report.errors))

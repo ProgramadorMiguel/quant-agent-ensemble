@@ -26,6 +26,7 @@ from models.conventions import (
     SUPPORTED_CURRENCIES,
     convention_for,
     expected_values,
+    stated_in,
 )
 from models.irs_fields import IBOR, OVERNIGHT_COMPOUNDED, RATE_TYPES, IRSFields
 from models.schedule import FREQUENCY_MONTHS, payment_dates
@@ -218,8 +219,17 @@ def _check_enums(fields: IRSFields, errors: list[str]) -> None:
         )
 
 
-def _check_convention(fields: IRSFields, errors: list[str]) -> None:
-    """Contrasta los terminos derivados contra la convencion de la divisa."""
+def _check_convention(
+    fields: IRSFields, errors: list[str], prompt: str | None = None
+) -> None:
+    """Contrasta los terminos derivados contra la convencion de la divisa.
+
+    Un termino que la peticion enuncia se respeta aunque no sea el estandar: un
+    swap EUR a cinco anos contra EURIBOR 3M se negocia, y rechazarlo seria
+    rechazar negocio legitimo. Lo que se exige es que el termino **exista**: si la
+    peticion calla y el modelo no lo ha derivado, o lo ha derivado distinto de la
+    convencion, es un error del modelo y el bucle lo corrige.
+    """
     if fields.currency and fields.currency not in SUPPORTED_CURRENCIES:
         errors.append(
             f"currency {fields.currency} is out of scope: only "
@@ -237,7 +247,10 @@ def _check_convention(fields: IRSFields, errors: list[str]) -> None:
             )
         return
 
-    for path, expected in expected_values(convention).items():
+    expected_all = expected_values(
+        convention, tenor=fields.floating_leg.tenor, currency=fields.currency
+    )
+    for path, expected in expected_all.items():
         actual = _get(fields, path)
         if expected is None:
             continue  # la ausencia ya la comprueba _check_enums
@@ -246,10 +259,11 @@ def _check_convention(fields: IRSFields, errors: list[str]) -> None:
                 f"{path} is missing: the {fields.currency} convention for this "
                 f"maturity is {expected}"
             )
-        elif str(actual) != str(expected):
+        elif str(actual) != str(expected) and not stated_in(prompt, path):
             errors.append(
                 f"{path} is {actual!r} but the {fields.currency} convention for "
-                f"this maturity is {expected!r}"
+                f"this maturity is {expected!r}, and the request does not state "
+                "otherwise"
             )
 
 
@@ -301,7 +315,14 @@ def _check_schedules(fields: IRSFields, errors: list[str]) -> None:
                 )
 
 
-def validate_irs(fields: IRSFields) -> ValidationReport:
+def validate_irs(fields: IRSFields, prompt: str | None = None) -> ValidationReport:
+    """Valida los terminos extraidos.
+
+    ``prompt`` es la peticion original. Cuando se suministra, un termino de
+    convencion que la peticion enuncia se respeta aunque no sea el estandar. Sin
+    ella la validacion es estricta y exige la convencion en todo, que es el
+    comportamiento correcto cuando no hay forma de saber que pidio el usuario.
+    """
     missing: list[str] = []
     clarifications: list[str] = []
     for path, description in REQUIRED_TERMS:
@@ -314,7 +335,7 @@ def validate_irs(fields: IRSFields) -> ValidationReport:
     errors: list[str] = []
     _check_sanity(fields, errors)
     _check_enums(fields, errors)
-    _check_convention(fields, errors)
+    _check_convention(fields, errors, prompt)
     _check_schedules(fields, errors)
 
     return ValidationReport(
