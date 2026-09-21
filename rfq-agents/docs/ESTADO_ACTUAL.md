@@ -1,275 +1,272 @@
 # Estado actual del trabajo
 
-Última actualización: **2026-09-21, 09:45** (Madrid).
+Última actualización: **2026-09-21, 16:50** (Madrid).
 
-Documento de retomada: qué está hecho, qué está a medias y cuál es el siguiente
-paso. Si vuelves al proyecto después de un tiempo, empieza por aquí.
+Documento de retomada. **Si vuelves al proyecto, o si abres una conversación nueva
+para escribir la memoria, empieza por aquí.** Contiene lo que hace falta saber para
+redactar los capítulos de resultados y conclusiones sin volver a mirar el código.
 
 ---
 
-## Dónde está el proyecto
+## 1. Qué es este trabajo
 
-**Copia de trabajo (la que tiene Git):**
+Un sistema que convierte una petición de cotización de *swap* de tipos de interés,
+escrita en lenguaje natural por una mesa de negociación, en una **RFQ estructurada
+en protobuf** lista para un motor de valoración.
+
+**Tres agentes de lenguaje en cadena, más dos capas deterministas:**
+
+```
+Texto libre de la mesa
+   ↓
+1. ORQUESTADOR (LLM)     clasifica: IRS o UNSUPPORTED
+   ↓
+2. ESPECIALISTA (LLM)    extrae los términos, deriva las convenciones de
+   ↓                     mercado y calcula los calendarios de pago
+   VALIDADOR (Python)    ¿está completo y es coherente?
+   ↓                     si no, devuelve el diagnóstico al paso 2 (máx. 5 pasadas)
+3. MAPEADOR (Python)     escribe la RFQ que emite el sistema
+   AGENTE PROTO (LLM)    hace lo mismo en paralelo, solo para medirse
+```
+
+**Contrato de salida, sin revisión humana:** o una RFQ bien conformada, o el motivo
+por el que no se puede emitir.
+
+**Alcance declarado:** EUR y USD, vencimientos de un año o más, convenciones
+estándar salvo que la petición enuncie otra.
+
+---
+
+## 2. Dónde está y cómo se ejecuta
+
+**Copia de trabajo, la que tiene Git:**
 `C:\Users\mprietol\Documents\TFM Miguel\quant-agent-ensemble\rfq-agents`
 
-**Intérprete.** El venv sigue en la copia antigua del proyecto
-(`C:\Users\mprietol\Documents\TFM Miguel\rfq-agents\.venv`, Python 3.13). Es una
-fuente de confusión (dos copias, una sin Git) y ya ha causado una tanda medida
-con instrucciones desactualizadas. Pendiente: crear el venv dentro de esta copia
-con `python -m venv .venv; pip install -r requirements.lock` y retirar la antigua.
-Mientras tanto:
+**Repositorio público:** https://github.com/ProgramadorMiguel/quant-agent-ensemble
+(mencionarlo en la memoria: lo pidió el tutor)
+
+⚠️ **El venv vive en la copia antigua**, no en esta. Es una fuente real de
+confusión y ya provocó una tanda medida con instrucciones desactualizadas.
 
 ```powershell
 cd "C:\Users\mprietol\Documents\TFM Miguel\quant-agent-ensemble\rfq-agents"
 $py = "..\..\rfq-agents\.venv\Scripts\python.exe"
 
-& $py -m pytest -q                                   # tests
-& $py src\evaluate.py --models gpt-4.1-mini          # lanza una tanda
-& $py src\report.py                                  # informe de la última tanda
+& $py -m pytest -q                              # 84 tests
+& $py tools\check_cases.py                      # verifica los 23 casos dorados
+& $py src\runner.py                             # una petición a mano, interactivo
+& $py src\evaluate.py --models gpt-5.6-terra    # una tanda completa
+& $py src\report.py --all-batches               # el informe
 ```
 
-Requiere Python 3.11 o superior (`tomllib`). `requirements.lock` fija las
-versiones exactas con las que se midieron las tandas.
-
-El `.env` con la clave de OpenAI **no está en el repo** (correcto). Si falta:
-`copy "..\..\rfq-agents\.env" .env`
+El `.env` con las claves **no está en el repo** y nunca lo ha estado. Necesita
+`OPENAI_API_KEY` y, para Claude, `ANTHROPIC_API_KEY`.
 
 ---
 
-## Qué está implementado
+## 3. EL RESULTADO PRINCIPAL
 
-| Componente | Estado |
+Seis modelos, dos proveedores, **los mismos 23 casos y las mismas instrucciones**.
+
+| Modelo | Proveedor | Acierto | Coste/caso válido | Latencia p50 |
+|---|---|---|---|---|
+| **`gpt-5.6-terra`** | OpenAI | **23/23** | **0,0102 $** | 9.011 ms |
+| `gpt-5.6-sol` | OpenAI | **23/23** | 0,0182 $ | 11.029 ms |
+| `claude-sonnet-5` | Anthropic | **23/23** | 0,0601 $ | 14.405 ms |
+| `claude-opus-5` | Anthropic | **23/23** | 0,0904 $ | 15.252 ms |
+| `gpt-5.6-luna` | OpenAI | 22/23 | **0,0013 $** | 7.153 ms |
+| `claude-haiku-4-5` | Anthropic | 13/23 | 0,0203 $ | **3.475 ms** |
+
+**Cuatro de los seis resuelven la tarea sin un solo fallo.** La elección de modelo
+deja de ser de capacidad y pasa a ser económica.
+
+**Recomendación: `gpt-5.6-terra`** — acierto perfecto al menor coste entre los que
+lo logran. **`gpt-5.6-luna` cuando el coste manda**, un orden de magnitud más
+barato, a cambio de un falso positivo de frontera de producto y una aritmética de
+fechas poco fiable.
+
+**Tarifas verificadas** el 21/09/2026 contra la documentación de cada proveedor,
+salvo `gpt-4.1` y `gpt-4.1-mini`, que ya no figuran en la página de precios y no
+deben citarse.
+
+---
+
+## 4. Los diez hallazgos para la memoria
+
+**`docs/HALLAZGOS_MEMORIA.md` es el fichero que hay que abrir para redactar
+resultados y conclusiones.** Cada hallazgo tiene su tesis y la evidencia mínima.
+En resumen:
+
+| | Hallazgo |
 |---|---|
-| Cadena de tres agentes: orquestador, especialista, proto | ✅ |
-| Validación determinista con lista de términos a especificar | ✅ |
-| Mapeador determinista a protobuf | ✅ |
-| Esquema de IRS con dos patas y doble curva (Definición 2.19) | ✅ |
-| Generación determinista de calendarios de pago | ✅ |
-| 14 casos dorados en cuatro familias | ✅ |
-| Comparación de campos aplanada (16 términos, no 10) | ✅ |
-| Identificador de tanda (`batch_id`) en la telemetría | ✅ |
-| Informe con desglose por familia | ✅ |
-| Valores por omisión simétricos entre mapeador y agente | ✅ |
-| Soporte de Anthropic | ❌ Pendiente (falta clave) |
-| Comparación tres agentes frente a uno | ❌ Aplazado |
-| QuantLib en C++ | ❌ Aplazado |
+| 1 | Ningún proveedor expone la temperatura en su generación actual |
+| 2 | La literalidad de un modelo es una propiedad que se paga |
+| 3 | Un evaluador puede ser estable, reproducible y engañoso |
+| 4 | Un LLM serializa protobuf anidado con fidelidad total |
+| 5 | El bucle de autocorrección solo aporta si la especificación es imprecisa |
+| 6 | El cese del LIBOR cambió la estructura del producto, no solo el índice |
+| 7 | El precio de lista no predice el coste de la tarea |
+| 8 | Un modelo puede comprender la tarea y fallar el contrato de salida |
+| 9 | Cuatro de seis modelos resuelven la tarea sin fallos |
+| 10 | Dentro de OpenAI, solo el eje de coste es concluyente |
 
-**Correcciones del 2026-09-15** (revisión del proyecto, sin relanzar tandas):
+**Los tres más originales, y los que yo llevaría a las conclusiones:**
 
-- El coste por llamada ahora descuenta los tokens de entrada servidos desde la
-  caché de prompt de OpenAI (`prompt_tokens_details.cached_tokens`). Los costes
-  de las tandas 1 a 4 se calcularon sin ese descuento y están **sobreestimados**;
-  hay que relanzar antes de citar cifras de coste.
-- El evaluador distingue una salida fuera de contrato del agente (`IRS.` en vez
-  de `IRS`, o un `InterestRateSwap` no parseable) de un error de API. La primera
-  cuenta como fallo del caso con producto `MALFORMED`; la segunda se excluye del
-  agregado, como antes. Hasta hoy ambas se excluían.
-- Las bases de datos archivadas están en `evaluation/results/`, bajo Git.
-- `with_defaults` normaliza la frecuencia de pago a mayúsculas.
-- README: Python 3.11+ y `requirements.lock`.
+- **El 3.** Seis defectos de instrumentación produjeron cifras internamente
+  consistentes y falsas. Cuatro tandas consecutivas dieron 0 % de fidelidad de
+  serialización con plena coherencia, y ninguna cantidad de repeticiones lo habría
+  revelado porque el defecto estaba en la referencia, no en la varianza.
+- **El 2.** `gpt-5.6-sol` pasó de 82,6 % a 100 % arreglando una frase de una
+  instrucción. Era el único modelo que la leía bien; los otros dos acertaban por
+  ignorarla. Invierte el consejo habitual: un modelo más capaz obliga a escribir
+  mejor la instrucción, no permite descuidarla.
+- **El 7.** `claude-sonnet-5` y `gpt-5.6-terra` tienen tarifa casi idéntica y
+  ambos aciertan 23/23, pero el primero cuesta cuatro veces más por pasada porque
+  consume muchos más tokens. El precio por token no predice el coste de la tarea.
 
 ---
 
-## Último resultado: tanda 4, todo al 100 %
+## 5. Los 23 casos de prueba
 
-`20260914T150109Z`, `gpt-4.1-mini`, 14 casos, 1 repetición.
+En `evaluation/cases/`, cinco familias. **Once los propuso el tutor**, doce son
+propios. Los genera `tools/make_cases.py` a partir de sus términos económicos, no
+están escritos a mano: una errata en un caso dorado se lee después como un fallo
+del modelo, y eso ya ocurrió una vez.
 
-| Métrica | Resultado | IC 95 % |
+| Familia | Casos | Qué mide |
 |---|---|---|
-| Clasificación de producto | **14/14 (100 %)** | [78 %, 100 %] |
-| Estado de validación | **14/14 (100 %)** | [78 %, 100 %] |
-| RFQ exacta | **14/14 (100 %)** | [78 %, 100 %] |
-| Exactitud por campo | **100 %** | — |
-| Campos alucinados | **0** | — |
-| Fidelidad del agente proto | **7/7 (100 %)** | [65 %, 100 %] |
+| `cotizacion/` | 7 | Petición de precio, **sin tipo fijo**: es lo que se pregunta |
+| `valoracion/` | 5 | *Swap* ya contratado, con su tipo, del que se pide el valor |
+| `jerga/` | 3 | Taquigrafía de mesa: `Pay 5y 50m EURIBOR6M spot` |
+| `no_valorables/` | 3 | Falta un término o los datos se contradicen |
+| `no_soportados/` | 5 | Producto fuera de alcance |
 
-Las cuatro familias al 100 %, incluida `jerga` (3/3).
-
-Latencia mediana 6.729 ms, p95 18.626 ms. Coste 0,0395 USD por pasada, 0,0028 USD
-por caso válido.
-
-**El sistema completo funciona sin fallos.** No queda ninguna pregunta abierta
-sobre su comportamiento; lo que falta es robustecer la evidencia (repeticiones,
-más modelos) y verificar las tarifas.
+Las capacidades que exigen: resolver *spot*, «el próximo lunes», la estructura
+diferida `2Y1Y`, derivar el vencimiento de un plazo, deducir la divisa del índice,
+leer la dirección de una intención de cobertura, periodos rotos, y convenciones no
+estándar cuando la petición las enuncia.
 
 ---
 
-## Cómo se llegó aquí: cuatro fallos, ninguno del modelo
+## 6. Decisiones de diseño y su justificación
 
-Conviene saberlo para no repetirlo. Las tandas 1 a 3 registraron 0 % de fidelidad
-del agente proto y dos falsos negativos de clasificación. **Nada de eso era del
-modelo.** Eran cuatro defectos de instrumentación:
+Material para el capítulo de implementación.
 
-1. **Orquestador.** Declaraba no soportados los «*overnight index swaps*», y el
-   modelo asimiló `SOFR 3M` y `SONIA 3M` a esa categoría. Son índices a un día
-   con plazo declarado, es decir, la pata flotante de un vanilla.
-2. **Calendarios no enviados.** El agente proto se comparaba contra una RFQ que
-   incluye los calendarios de pago, sin recibirlos. Imposible coincidir.
-3. **Instrucción del mensaje raíz.** Decía «the root message is `RFQ`»; el modelo
-   escribía `RFQ { ... }`, inválido en formato de texto protobuf, donde el
-   mensaje raíz es implícito.
-4. **Valor por omisión asimétrico.** El diferencial ausente se rellenaba a cero
-   dentro del mapeador, así que la referencia contenía `spread: 0.0` y al agente
-   no se le enviaba ese término. Corregido con
-   `validation.irs_validator.with_defaults`, que se aplica una sola vez antes de
-   que los términos lleguen a cualquiera de los dos consumidores.
+**El esquema sigue la Definición 2.19 del libro del tutor.** Dos patas, cada una
+con su base de cálculo, frecuencia y calendario; dos curvas, la de descuento en el
+nivel común y la de estimación **dentro de la pata flotante**, porque solo concierne
+a esa pata. Los nombres de campo reproducen los argumentos de la clase `Swap` del
+Código 2.11 para que la RFQ sea consumible por ese valorador sin traducción.
 
-**Regla práctica:** antes de atribuir un fallo al modelo, verificar que la tarea
-era resoluble con la información suministrada y que la referencia de comparación
-es alcanzable. Cuatro tandas consecutivas dieron 0 % con plena consistencia
-interna; ninguna cantidad de repeticiones lo habría revelado.
+**`RFQPurpose` distingue cotización de valoración**, y la presencia del tipo fijo
+es lo que las separa. En una cotización el tipo es lo que el cliente pregunta: el
+motor lo resuelve haciendo cero el valor presente neto. Exigirlo convertía en
+inválida la forma normal de pedir precio, y ninguno de los casos de mercado que
+propuso el tutor lo enuncia.
 
----
+**`FloatingRateType` distingue `IBOR` de `OVERNIGHT_COMPOUNDED`**, y el plazo de
+fijación solo existe en el primero. Sin esa distinción no se puede modelar un
+*swap* en dólares: tras el cese del LIBOR es un OIS contra SOFR capitalizado, sin
+tenor.
 
-## Riesgo conocido: medir contra una versión que ya no existe
+**Los calendarios los calcula el agente, no Python.** Con periodos rotos el
+calendario no se deduce de la frecuencia, y saber si un modelo de lenguaje lo
+resuelve es una de las preguntas del trabajo.
 
-Ha ocurrido dos veces hoy, de dos formas distintas:
+**Las convenciones de mercado viven en Python para comprobarlas, no para
+rellenarlas.** La derivación la hace el agente, que es lo que se mide; el validador
+la contrasta y, si no coincide, el bucle corrige.
 
-1. **Tandas mezcladas.** La base de datos acumula ejecuciones. Se relanzó sin
-   archivar y el informe agregó dos tandas medidas contra casos dorados
-   distintos, presentando como inestabilidad del modelo lo que era un cambio de
-   referencia. *Mitigado:* existe `batch_id` y el informe usa por omisión la
-   última tanda.
-2. **Instrucciones desactualizadas.** Se lanzó una tanda antes de que los
-   arreglos estuvieran en disco. *No mitigado:* la telemetría guarda
-   `prompt_hash` por llamada, pero el informe no compara ese hash con el del
-   fichero actual. **Mejora pendiente:** que `report.py` avise cuando una tanda
-   se midió con instrucciones distintas de las presentes.
-
-**Regla de trabajo mientras no esté mitigado:** después de editar un agente, un
-*skill* o un caso dorado, relanzar antes de leer cualquier cifra.
+**El validador separa dos clases de problema.** Un término que la petición nunca
+enunció se reclama y **no se reintenta**, porque la información no existe. Un error
+del modelo alimenta el bucle. Sin esa distinción el bucle gastaría pasadas en lo
+que no tiene arreglo.
 
 ---
 
-## Rediseño acordado en la reunión del 2026-09-15
+## 7. Limitaciones que hay que declarar
 
-Las notas están en `../notas tutorias.txt` (fuera del repo). Cambian tres cosas de
-fondo que **contradicen decisiones actuales** y hay que planificar antes de
-seguir midiendo, porque invalidan los casos dorados:
+No omitirlas: son lo que separa un TFM de un folleto.
 
-1. **Esquema.** `forecast_curve` pasa dentro de `floating_leg`. Cada pata lleva su
-   calendario de pagos completo y explícito, y **lo calcula el LLM**, no
-   `schedule.py` (motivo: periodos rotos). Hoy el skill prohíbe al agente emitir
-   `payment_dates`; habrá que invertirlo y medir la exactitud del calendario
-   como un campo más. Nota: el ejemplo de la reunión excluye la fecha de inicio
-   del vector (5 fechas fijas, 10 flotantes para 5 años); `schedule.py` hoy la
-   incluye como T_0 (6 y 11).
-2. **Obligatorios frente a convención.** Solo siete términos son impepinables
-   (`rate`, `maturity_date`, `valuation_date`, `effective_date`, `currency`,
-   `notional`, `is_fixed_rate_receiver`). El resto se deriva por convención de
-   mercado documentada (EUR y USD, vencimiento > 1 año). Esto invierte el
-   principio «nunca asumir» de `REQUIRED_TERMS`, del skill y de la familia
-   `incompletos`: los casos `sin_bases_calculo`, `sin_curvas` y `sin_frecuencias`
-   pasan a ser **válidos** y hay que añadir casos sin `rate`, sin `maturity`,
-   sin divisa. Conviene mantener medible la distinción entre «extraído del
-   texto» y «rellenado por convención» en la telemetría.
-3. **Bucle acotado.** Guardarraíles de sanidad (fechas absurdas, negativos) y
-   reintento vía orquestador con máximo 5 iteraciones. Hoy no hay bucle.
-
-## Rediseño acordado con el tutor (15/09/2026, respuesta 21/09/2026)
-
-Aprobado por él, pendiente de implementar. Detalle completo de convenciones en
-`docs/CONVENCIONES_MERCADO.md`.
-
-**Esquema**
-- `forecast_curve` pasa dentro de `floating_leg`
-- **Ambas patas** llevan vector de fechas de pago explícito
-- Motivo: con periodos rotos el calendario no se deduce de (inicio, vencimiento,
-  frecuencia). Los periodos rotos se piden en el *prompt*, no son automáticos
-- **Las fechas las calcula el LLM** (él lo dejó a criterio propio)
-- Mismo tipo para todos los periodos
-
-**Campos**
-- Obligatorios: `rate`, `maturity_date`, `valuation_date`, `effective_date`,
-  `currency`, `notional`, `is_fixed_rate_receiver`
-- Opcionales, derivables de convención: `day_count`, `payment_frequency`,
-  `tenor`, `index`, curvas
-- ⚠️ Esto **invierte** la regla actual de no rellenar nada. Afecta a la métrica de
-  alucinación: habrá que distinguir «derivado de convención documentada» de
-  «inventado»
-
-**Arquitectura**
-- Bucle acotado a **5 iteraciones**, no hasta el éxito
-- Guardarraíles de sanidad: no fechas del año 1050, no negativos donde no procede
-- Si no valida, vuelve al orquestador con el error
-- Sin revisión humana. Contrato: entrada → error o RFQ bien conformada
-
-**Alcance:** solo EUR y USD. GBP descartado.
-
-### Bloqueante: los OIS pasan a ser producto soportado
-
-Un *swap* vanilla USD **es** un OIS desde el cese del LIBOR. Decisión del
-21/09/2026: aceptarlos. Implica reescribir la sección del orquestador que los
-rechaza y que presupone un «SOFR 3M» inexistente, rehacer los casos dorados USD, y
-decidir cómo modelar `tenor`, que es obligatorio en EUR y no aplica en USD.
+- **Una repetición por modelo.** La estabilidad se infiere de la coincidencia entre
+  tandas, no de repeticiones internas.
+- **23 casos, doce escritos por el autor del sistema.** La comparación entre
+  modelos usa los mismos casos y es válida; el nivel absoluto está sesgado.
+- **El contraste de McNemar solo alcanza potencia en un par.** `haiku` frente a
+  `opus` y a `sonnet` dan p = 0,002; los demás pares tienen menos de seis pares
+  discordantes. **No redactarlo como empate**: es falta de resolución.
+- **La temperatura no es un eje.** Ninguno de los dos proveedores la expone hoy, de
+  modo que la variabilidad entre tandas es irreducible y la reproducibilidad no se
+  puede apoyar en fijarla a cero.
+- **El sistema no valora.** Estructura la petición; no calcula precio ni riesgo.
+- **La detección de convenciones enunciadas es léxica**, sobre un vocabulario
+  cerrado. No interpreta la frase.
+- **El precio de `gpt-5.6-sol` es promocional** hasta el 21/11/2026.
+- **Sin calendario de festivos ni fechas de fijación**, la misma simplificación que
+  adopta el libro del tutor en la pág. 63.
 
 ---
 
-## Tareas pendientes, por orden
+## 8. La referencia obligatoria
 
-0. **Planificar el rediseño anterior** y decidir qué casos dorados se reescriben.
-   Relanzar la tanda 4 tras las correcciones de hoy para tener cifras de coste
-   correctas del diseño actual antes de cambiarlo (sirve de línea base).
-1. **Repeticiones** (`--repetitions 5`) para estimar variabilidad. Todas las
-   cifras actuales son de una sola pasada, con intervalos anchos.
-2. **Verificar tarifas** en `config/model_costs.toml`. El informe avisa de que
-   están sin verificar; no publicar costes hasta hacerlo.
-3. **Comparar modelos**: `--models gpt-4.1-mini gpt-4.1`. Responde al punto del
-   tutor sobre experimentos con varios LLM.
-4. **Aviso de `prompt_hash`** en `report.py` (ver riesgo 2 más abajo).
-5. **Anthropic**: falta clave y falta la capa de proveedor.
-6. **Aplazados, no cancelados:** comparación de tres agentes frente a uno
-   (`ARQUITECTURA.md` §8.4) y QuantLib en C++.
-
-### Decisión de diseño ya respaldada por datos
-
-Con la fidelidad del agente proto resuelta en 7/7, la pregunta de si conservarlo
-deja de ser sobre capacidad y pasa a ser económica: es el más lento de los tres
-(9.415 ms de media frente a 2.856 ms del especialista), consume el **29 % del
-coste** de cada pasada y produce el mismo mensaje que una función determinista
-genera sin coste. Material directo para el capítulo de conclusiones.
-
----
-
-## Sobre la memoria
-
-Los cuatro capítulos LaTeX (modelo teórico, implementación, planificación,
-presupuesto) están en `docs/latex/` en estado de **borrador generado**, no
-revisado. Antes de usarlos hay que reescribirlos en voz propia y añadir citas: el
-capítulo teórico expone teoría de otros autores sin citar a nadie.
-
-Pendientes de la matriz de evaluación de la UC3M: bibliografía en APA, estado del
-arte, resumen en inglés (obligatorio) y mención explícita de la URL del
-repositorio.
-
-**Referencia obligatoria**, que además fija el esquema del IRS:
+El esquema se deriva del libro **del propio tutor**, y es cita obligada:
 
 > Ausín Amigo, M. (2025). *Quantitative Finance: Code, Concepts, and Practice: A
-> Practitioner's Guide for Financial Engineers*. Universidad Carlos III de
-> Madrid. ISBN 978-84-10132-25-2. https://hdl.handle.net/10016/48560
+> Practitioner's Guide for Financial Engineers*. Universidad Carlos III de Madrid.
+> ISBN 978-84-10132-25-2. https://hdl.handle.net/10016/48560
 
-Definición 2.19 (pág. 59) para la estructura de patas, §2.4.6.2 para el marco de
-doble curva, pág. 57 para las bases de cálculo, Código 2.11 (pág. 63) para los
-nombres de campo y las simplificaciones adoptadas.
-
----
-
-## Documentos del proyecto
-
-| Fichero | Contenido |
+| Dónde | Para qué |
 |---|---|
-| `ESTADO_ACTUAL.md` | Este documento: retomada y estado |
-| `CONVENCIONES_MERCADO.md` | Convenciones EUR y USD verificadas, con fuentes |
-| `REGISTRO_EXPERIMENTOS.md` | Bitácora de tandas con diagnóstico |
-| `ARQUITECTURA.md` | Diseño objetivo, con tabla de qué está implementado |
-| `FLUJO_AGENTES.md` | Flujo real con trazas de ejecución |
-| `Overleaf/referencias.bib` | Bibliografía en formato biblatex |
+| Definición 2.19, pág. 59 | Estructura de patas |
+| §2.4.6.2 | Marco de doble curva |
+| Pág. 57, ec. 2.27–2.28 | Bases de cálculo |
+| Código 2.11, pág. 63 | Nombres de campo y simplificaciones adoptadas |
+| Ec. 2.42 | Tipo par, lo que resuelve una cotización |
+
+**`referencias.bib` tiene 24 entradas.** Las de convenciones y tarifas se añadieron
+el 21/09: `opengamma2024conventions`, `opengamma2026strata`, `arrc2023closing`,
+`quantlib2026`, `openai2026pricing`, `anthropic2026pricing`, `anthropic2026models`.
 
 ---
 
-## Bitácora de experimentos
+## 9. Documentos del proyecto
 
-`docs/REGISTRO_EXPERIMENTOS.md` recoge cada tanda con su configuración, su salida
-literal y el diagnóstico de sus fallos. Las bases de datos se archivan en
-`evaluation/results/` con nombre versionado y bajo Git; `outputs/evaluations.db`
-es solo la copia de trabajo y no se versiona.
+| Fichero | Para qué sirve al escribir |
+|---|---|
+| **`HALLAZGOS_MEMORIA.md`** | **Resultados y conclusiones.** Diez hallazgos con su tesis |
+| `REGISTRO_EXPERIMENTOS.md` | Bitácora de las 17 tandas, con salidas literales y diagnóstico |
+| `CONVENCIONES_MERCADO.md` | Convenciones EUR y USD verificadas, con fuentes citables |
+| `ARQUITECTURA.md` | Diseño, con tabla de qué está implementado y qué no |
+| `FLUJO_AGENTES.md` | Flujo real con trazas de ejecución |
+| `ESTADO_ACTUAL.md` | Este documento |
+| `Overleaf/referencias.bib` | Bibliografía, 24 entradas |
+| `evaluation/results/*.db` | 13 bases archivadas: la evidencia reproducible |
+
+Las bases de datos **se versionan a propósito**: sin ellas ninguna cifra de la
+memoria sería reconstruible.
+
+---
+
+## 10. Qué queda
+
+**El código está cerrado.** 84 tests, 23 casos verificados, seis modelos medidos.
+No hacen falta más cambios para escribir la memoria.
+
+**Lo que falta es la memoria**, y es donde está el riesgo:
+
+| Pendiente | Estado |
+|---|---|
+| Estado del arte | `03_estado_arte.tex` existe; el tutor pidió «varias decenas» de referencias y hay 24 |
+| Resumen en inglés | **Obligatorio por la matriz de la UC3M.** No existe |
+| Plan de proyecto y análisis de costes | Borrador; el tutor los echaba en falta |
+| Capítulo de resultados y conclusiones | Sin escribir. **Usar `HALLAZGOS_MEMORIA.md`** |
+| URL del repositorio en el documento | Pendiente |
+| Términos ingleses en cursiva | Pendiente de repasar |
+
+⚠️ **Los capítulos LaTeX en borrador se generaron con asistencia.** Antes de
+presentarlos hay que reescribirlos en voz propia y añadir citas: el capítulo teórico
+expone teoría de otros autores sin citar a nadie, y eso es plagio independientemente
+de quién redactó el texto.
+
+**Aplazados, no cancelados:** comparación de tres agentes frente a uno
+(`ARQUITECTURA.md` §8.4) y la integración de QuantLib en C++.
