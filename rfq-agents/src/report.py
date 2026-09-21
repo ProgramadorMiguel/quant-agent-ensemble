@@ -70,9 +70,10 @@ def report_operations(aggregates: list[ModelAggregate]) -> None:
 
 
 FAMILY_QUESTION = {
-    "completos": "extrae limpio una peticion completa",
-    "incompletos": "detecta lo que falta y no lo inventa",
+    "cotizacion": "resuelve una peticion de precio, sin tipo fijo",
+    "valoracion": "extrae un swap ya contratado, con su tipo",
     "jerga": "entiende la redaccion abreviada de mesa",
+    "no_valorables": "detecta lo que falta o se contradice, sin inventarlo",
     "no_soportados": "rechaza un producto que no sabe tratar",
 }
 

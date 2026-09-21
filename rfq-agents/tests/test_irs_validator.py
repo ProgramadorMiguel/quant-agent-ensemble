@@ -171,6 +171,22 @@ def test_a_schedule_not_ending_on_maturity_is_rejected(eur_fields):
     assert any("must end on maturity_date" in e for e in report.errors)
 
 
+def test_reversed_dates_with_a_schedule_do_not_crash(eur_fields, dates):
+    """Un modelo puede devolver un calendario sobre fechas invertidas.
+
+    El generador de referencia no puede producir uno sobre un plazo negativo, asi
+    que comprobar el calendario ahi lanzaba una excepcion y convertia un caso
+    invalido en una caida del programa. La incoherencia de fechas basta.
+    """
+    fields = eur_fields.model_copy(update={
+        "effective_date": date(2026, 10, 10),
+        "maturity_date": date(2024, 10, 10),
+    })
+    report = validate_irs(fields)
+    assert not report.is_valid
+    assert "effective_date must be before maturity_date" in report.errors
+
+
 def test_an_unordered_schedule_is_rejected(eur_fields):
     fields = eur_fields.model_copy(update={
         "fixed_leg": eur_fields.fixed_leg.model_copy(update={

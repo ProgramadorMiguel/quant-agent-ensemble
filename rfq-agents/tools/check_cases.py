@@ -26,7 +26,7 @@ EXPECTED_BY_FAMILY = {
     "cotizacion": "VALID",
     "valoracion": "VALID",
     "jerga": "VALID",
-    "incompletos": "INVALID",
+    "no_valorables": "INVALID",
     "no_soportados": "NOT_RUN",
 }
 

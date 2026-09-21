@@ -315,6 +315,13 @@ def _check_schedules(fields: IRSFields, errors: list[str]) -> None:
     """
     if not fields.effective_date or not fields.maturity_date:
         return
+    # Con las fechas invertidas no hay plazo sobre el que comprobar un
+    # calendario, y el generador de referencia no puede producir uno. La
+    # incoherencia ya la ha registrado _check_sanity; insistir aqui solo anadiria
+    # ruido, y llamar al generador lanzaria una excepcion que convertiria un caso
+    # invalido en una caida del programa.
+    if fields.effective_date >= fields.maturity_date:
+        return
     for leg_name in ("fixed_leg", "floating_leg"):
         leg = getattr(fields, leg_name)
         dates = leg.payment_dates

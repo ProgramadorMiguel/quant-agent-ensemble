@@ -1,0 +1,25 @@
+purpose: PAR_RATE_QUOTE
+notional: 30000000
+currency: "EUR"
+is_fixed_rate_receiver: true
+valuation_date: "2026-09-21"
+effective_date: "2028-09-23"
+maturity_date: "2029-09-23"
+discount_curve: "EUR-ESTR"
+fixed_leg {
+  day_count: "30U/360"
+  payment_frequency: "1Y"
+  payment_dates: "2029-09-23"
+}
+floating_leg {
+  rate_type: IBOR
+  index: "EURIBOR"
+  tenor: "3M"
+  day_count: "ACT/360"
+  payment_frequency: "3M"
+  forecast_curve: "EUR-EURIBOR-3M"
+  payment_dates: "2028-12-23"
+  payment_dates: "2029-03-23"
+  payment_dates: "2029-06-23"
+  payment_dates: "2029-09-23"
+}

@@ -172,6 +172,15 @@ Quiero hacer una cobertura de tipo fijo a 10 anos en USD por 100M SOFR.
 """, expected(notional=100000000, currency="USD", receiver=False,
               effective=SPOT, maturity=years_after(SPOT, 10)))
 
+# Estructura diferida. "2Y1Y" es dos anos forward, un ano de plazo: el swap
+# empieza dentro de dos anos y dura uno. El inicio es el spot de entonces, de modo
+# que hay que resolver dos fechas relativas encadenadas.
+_FWD_START = years_after(SPOT, 2)
+write("cotizacion", "forward_start_2y1y", """
+RFQ IRS 2Y1Y EUR 30M. Recibimos fijo.
+""", expected(notional=30000000, currency="EUR", receiver=True,
+              effective=_FWD_START, maturity=years_after(_FWD_START, 1)))
+
 # ==========================================================================
 # JERGA. La misma informacion en taquigrafia de mesa.
 # ==========================================================================
@@ -237,19 +246,49 @@ EURIBOR paid quarterly.
               tenor="3M", frequency="3M"))
 
 # ==========================================================================
-# INCOMPLETOS. Falta un termino sin el que no hay swap. El sistema debe decirlo.
-# Un tipo fijo ausente NO entra aqui: eso es una cotizacion.
+# NO VALORABLES. El producto es el correcto, pero la peticion no se puede
+# valorar: falta un termino sin el que no hay swap, o los datos se contradicen.
+# Los detiene la validacion determinista, no el orquestador.
+#
+# Un tipo fijo ausente NO entra aqui: eso es una cotizacion, y es valida.
 # ==========================================================================
 
-write("incompletos", "sin_nocional", """
+write("no_valorables", "sin_nocional", """
 Cotizame un swap EUR a 5 anos, pagamos fijo.
 """, expected(notional=None, currency="EUR", receiver=False,
               effective=SPOT, maturity=years_after(SPOT, 5)))
 
-write("incompletos", "sin_direccion", """
+write("no_valorables", "sin_direccion", """
 Cotizame un IRS EUR 10M a 5 anos empezando spot.
 """, expected(notional=10000000, currency="EUR", receiver=None,
               effective=SPOT, maturity=years_after(SPOT, 5)))
+
+# Vencimiento anterior al inicio. El producto descrito es un IRS vanilla, asi que
+# el orquestador lo acepta; la incoherencia la detecta la validacion entre
+# atributos. El dorado se escribe a mano porque expected() no puede generar un
+# calendario sobre un plazo negativo.
+write("no_valorables", "fechas_desordenadas", """
+IRS 5Y EUR 10M, inicio 10-Oct-2026 y vencimiento 10-Oct-2024.
+""", """purpose: PAR_RATE_QUOTE
+notional: 10000000
+currency: "EUR"
+valuation_date: "2026-09-21"
+effective_date: "2026-10-10"
+maturity_date: "2024-10-10"
+discount_curve: "EUR-ESTR"
+fixed_leg {
+  day_count: "30U/360"
+  payment_frequency: "1Y"
+}
+floating_leg {
+  rate_type: IBOR
+  index: "EURIBOR"
+  tenor: "6M"
+  day_count: "ACT/360"
+  payment_frequency: "6M"
+  forecast_curve: "EUR-EURIBOR-6M"
+}
+""")
 
 # ==========================================================================
 # NO SOPORTADOS. El sistema debe rechazarlos y decir por que.
@@ -276,10 +315,6 @@ write("no_soportados", "eur_contra_sofr", """
 Cotizame un Swap EUR 20M a 5 anos pagando fijo contra SOFR.
 """, None)
 
-write("no_soportados", "fechas_desordenadas", """
-IRS 5Y EUR 10M, inicio 10-Oct-2026 y vencimiento 10-Oct-2024.
-""", None)
-
 # ==========================================================================
 # EXAMPLES: prompts de demostracion para runner.py.
 # ==========================================================================
@@ -291,7 +326,8 @@ for name, source in (
     ("cotizacion_jerga.txt", "jerga/pay_5y_50m_spot"),
     ("cotizacion_usd.txt", "cotizacion/cobertura_usd_10y"),
     ("valoracion.txt", "valoracion/eur_payer_5y"),
-    ("incompleta.txt", "incompletos/sin_nocional"),
+    ("incompleta.txt", "no_valorables/sin_nocional"),
+    ("incoherente.txt", "no_valorables/fechas_desordenadas"),
     ("rechazada.txt", "no_soportados/swaption"),
 ):
     (EXAMPLES / name).write_text(

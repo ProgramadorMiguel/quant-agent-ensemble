@@ -527,7 +527,277 @@ por una intuición de diseño.
 
 ---
 
-## Tanda 5 — Pendiente
+## Tanda 5 — Primera tanda con el esquema de cotización: `gpt-5.6-luna`
+
+| | |
+|---|---|
+| **Identificador** | `20260921T103244Z` (2026-09-21, 12:32 Madrid) |
+| **Modelo** | `gpt-5.6-luna` |
+| **Casos** | 22, en cinco familias |
+| **Fecha de referencia** | 2026-09-21 (lunes); *spot* = 2026-09-23 |
+| **Temperatura** | por omisión del modelo, ver más abajo |
+| **Estado** | **Incompleta y con un defecto de medición.** Las cifras agregadas no son publicables; los hallazgos cualitativos sí |
+
+Primera tanda contra el rediseño completo: peticiones de cotización sin tipo fijo,
+fechas relativas, convenciones derivadas y los casos de mercado propuestos por el
+tutor.
+
+### Aciertos del modelo
+
+**Las seis peticiones de cotización se resolvieron.** Es el resultado principal,
+porque cada una exigía algo que el sistema no sabía hacer el día anterior:
+
+| Caso | Lo que tuvo que resolver |
+|---|---|
+| `es_spot_5y` | *Spot* → 2026-09-23, y «a 5 años» → vencimiento 2031-09-23 |
+| `en_spot_5y` | Lo mismo en inglés, con *"Please provide fixed rate"* |
+| `es_fecha_explicita_10y` | Fecha escrita `24-Sep-2026`, tenor 10Y, EURIBOR 3M no estándar |
+| `usd_proximo_lunes_3y` | «El próximo lunes» → 2026-09-28, y SOFR como OIS |
+| `sin_convenciones_7y` | Todas las convenciones derivadas, nada enunciado |
+| `cobertura_usd_10y` | Dirección leída de la intención: cubrirse es pagar fijo |
+
+En los seis identificó `purpose: PAR_RATE_QUOTE` y **dejó ausente el tipo fijo**,
+que es el comportamiento correcto: es lo que el cliente pregunta.
+
+**La jerga de mesa se leyó sin error.** `Pay 5y 50m EURIBOR6M spot`, cinco
+palabras sin divisa declarada, produjo el mismo mensaje que la petición redactada
+en prosa: EUR deducido del índice, 50 millones de `50m`, pagador de `Pay`.
+
+**El bucle de autocorrección funcionó en producción.** Dos casos lo ejercitaron:
+`en_spot_5y` se resolvió en dos pasadas y `eur_no_estandar_3m` en cuatro. Es la
+primera evidencia de que la ruta de reintento rescata casos reales y no solo los
+simulados en los tests.
+
+**Cuatro de los seis rechazos fueron correctos**: *swaption*, *basis swap*, GBP
+fuera de alcance y vencimiento inferior a un año.
+
+### Fallo real: un guardarraíl que falta en el orquestador
+
+El caso `fechas_desordenadas` —*«IRS 5Y EUR 10M, inicio 10-Oct-2026 y vencimiento
+10-Oct-2024»*— **no fue rechazado**. El orquestador lo clasificó `IRS` y el flujo
+llegó a la etapa de extracción, donde el modelo produjo veinte términos.
+
+La incoherencia es evidente en el propio texto: el vencimiento precede al inicio
+en dos años. El validador determinista la detecta, de modo que **el sistema no
+emite una RFQ equivocada**, pero se gastan dos llamadas y hasta cinco pasadas del
+bucle en una petición que podía descartarse leyéndola.
+
+Es un hueco en las instrucciones del orquestador: su lista de motivos de rechazo
+enumera estructuras de producto no soportadas, pero no contempla una petición
+internamente contradictoria.
+
+### Defecto de medición: el diferencial por omisión
+
+Todos los casos con extracción registraron exactamente **una alucinación**, y
+siempre el mismo campo: `floating_leg.spread`.
+
+No era del modelo. La normalización que aplica el diferencial cero se ejecutaba
+sobre lo extraído pero no sobre el caso dorado, de modo que la comparación veía
+`0` frente a *ausente* y lo contaba como campo inventado. Un sesgo constante de
+una alucinación por caso.
+
+Es el **quinto** defecto de instrumentación de este tipo en el trabajo, y reincide
+en el mismo patrón: una diferencia de tratamiento entre las dos ramas de una
+comparación se lee como un fallo del modelo. Corregido aplicando la normalización
+también al dorado, en `load_golden`.
+
+### Hallazgo sobre el diseño experimental: la temperatura ya no es un eje
+
+`gpt-5.6-luna` rechaza cualquier temperatura distinta de la suya por omisión:
+
+```
+openai.BadRequestError: Error code: 400 - Unsupported value: 'temperature' does
+not support 0.0 with this model. Only the default (1) value is supported.
+```
+
+La generación actual de modelos **no expone ese parámetro**. La consecuencia para
+el trabajo es directa: el barrido de temperatura previsto no se puede ejecutar
+sobre estos modelos, y la comparación queda reducida al eje de modelo.
+
+El cliente lo detecta y reintenta sin el parámetro, anotándolo, en lugar de
+mantener una lista de modelos que quedaría obsoleta con cada lanzamiento. Pero la
+limitación es del proveedor y hay que declararla en la memoria: **la
+reproducibilidad de una tanda ya no se puede apoyar en fijar la temperatura a
+cero.**
+
+Barrerla exigiría volver a la generación `gpt-4.1`, cuyas tarifas no se han podido
+verificar, de modo que se perdería la posibilidad de publicar costes. Las dos
+cosas no son compatibles con los modelos disponibles hoy.
+
+### Limitaciones
+
+- **La tanda quedó incompleta**, 19 de 22 casos, por una restricción del entorno de
+  ejecución y no del sistema.
+- **Las cifras agregadas no son publicables**: el sesgo del diferencial afecta a
+  todos los casos con extracción.
+- **Un solo modelo y una sola repetición.**
+
+### Correcciones aplicadas tras la tanda
+
+1. `load_golden` normaliza el caso dorado igual que la extracción.
+2. `load_golden` valida contra el texto de la petición, para que un término de
+   convención enunciado en ella no se cuente como desviación.
+3. El cliente omite la temperatura cuando el modelo la rechaza.
+
+Pendiente: añadir a las instrucciones del orquestador el rechazo de peticiones
+internamente contradictorias.
+
+---
+
+## Tandas 6, 7 y 8 — Comparación de tres modelos
+
+| | |
+|---|---|
+| **Identificadores** | `20260921T104524Z` (luna), `20260921T104758Z` (terra), `20260921T105057Z` (sol) |
+| **Modelos** | `gpt-5.6-luna`, `gpt-5.6-terra`, `gpt-5.6-sol` |
+| **Casos** | 23, en cinco familias, idénticos en las tres tandas |
+| **Fecha de referencia** | 2026-09-21 (lunes); *spot* = 2026-09-23 |
+| **Repeticiones** | 1 |
+| **Tarifas** | verificadas el 2026-09-21 para los tres modelos |
+
+Las tres tandas comparten casos dorados e instrucciones, de modo que agregarlas es
+legítimo y la comparación entre modelos es válida.
+
+### Resultado
+
+| Modelo | Producto | Validación | RFQ exacta | Campos | Coste/pasada | Coste/caso válido |
+|---|---|---|---|---|---|---|
+| `luna` | 21/22 (95,5 %) | 21/22 | 21/22 | 94,7 % | **0,0257 $** | **0,0012 $** |
+| `terra` | 21/21 (100 %) | 21/21 | 20/21 | 99,7 % | 0,2651 $ | 0,0126 $ |
+| `sol` | 19/22 (86,4 %) | 19/22 | 19/22 | 82,6 % | 0,4200 $ | 0,0221 $ |
+
+### El hallazgo principal: el modelo más caro es el que peor lo hace
+
+`sol` cuesta **dieciséis veces más que `luna` por pasada** y **dieciocho veces más
+por caso válido**, y acierta nueve puntos menos. La relación entre capacidad
+declarada y utilidad para esta tarea no solo no es monótona: **está invertida.**
+
+El resultado no depende de una métrica agregada discutible. Se sostiene sobre tres
+fallos concretos y localizables.
+
+### Los dos modos de fallo son opuestos y se reparten por capacidad
+
+**`sol` falla por exceso de cautela.** Sus tres fallos son **falsos negativos del
+orquestador**: rechazó como no soportados tres *swaps* vanilla legítimos.
+
+| Caso rechazado por `sol` | Qué era | `luna` | `terra` |
+|---|---|---|---|
+| `eur_no_estandar_3m` | EUR a 5 años contra EURIBOR 3M, no estándar pero negociado | IRS | IRS |
+| `eur_receiver_1y` | EUR a un año, con la convención trimestral | IRS | IRS |
+| `usd_sofr_ois_3y` | USD contra SOFR capitalizado, el vanilla en dólares | IRS | IRS |
+
+Los tres tienen algo en común: son **swaps correctos pero inusuales**. El modelo
+más capaz es el que más desconfía de lo que se sale del caso de libro, y devuelve
+negocio que el sistema sabía tratar. Las latencias lo delatan: 2.923, 4.605 y
+5.238 ms, frente a los 10.000–19.000 ms de los casos que sí recorrieron el flujo.
+
+**`luna` falla por exceso de permisividad.** Su único fallo es un **falso
+positivo**: aceptó como IRS la petición `eur_contra_sofr`, un *swap* en euros
+contra SOFR, que es un producto de dos divisas y está fuera de alcance. `terra` y
+`sol` lo rechazaron.
+
+El sistema no emitió una RFQ equivocada —la validación entre atributos detiene la
+incoherencia divisa-índice— pero el modelo gastó dos pasadas del bucle en una
+petición que debía haberse detenido en la puerta.
+
+**Es la misma disyuntiva que apareció en la tanda 1 con los guardarraíles, ahora
+observada entre modelos y no entre redacciones de una instrucción.** Un evaluador
+que solo midiera alucinación habría dado por bueno a `sol`; uno que solo midiera
+aceptación habría preferido a `luna`. Solo separando los dos errores se ve que
+`terra` es el único que no comete ninguno de los dos.
+
+### Aciertos comunes a los tres modelos
+
+- **Las siete peticiones de cotización**, en los tres modelos. Resolvieron *spot*,
+  plazos, «el próximo lunes», la estructura diferida `2Y1Y`, la divisa deducida del
+  índice y la dirección leída de una intención de cobertura, sin inventar el tipo
+  fijo en ninguna.
+- **La jerga de mesa**, tres de tres en los tres modelos.
+- **Los términos ausentes o contradictorios**, detectados y reclamados sin
+  rellenarlos.
+- **Cero alucinaciones** en `terra` y `sol`. Las diecinueve de `luna` provienen
+  íntegramente del único caso que no rechazó: al aceptarlo, extrajo veinte
+  términos que el dorado no contempla.
+
+### Fidelidad de serialización: 100 % en los tres modelos
+
+| Modelo | Coincidencia con el mapeador |
+|---|---|
+| `luna` | 15/15 |
+| `terra` | 14/14 |
+| `sol` | 11/11 |
+
+Queda cerrada la pregunta que motivaba conservar el agente proto: **un modelo de
+lenguaje serializa protobuf contra un esquema con submensajes anidados y campos
+repetidos con fidelidad byte a byte, y lo hace incluso el más barato de los tres.**
+
+La decisión de mantener el mapeador determinista deja de apoyarse en la capacidad
+y pasa a apoyarse en el coste: ese agente consume entre el 30 % y el 40 % del
+presupuesto de cada pasada para reproducir lo que una función determinista produce
+gratis.
+
+### El bucle de autocorrección
+
+| Modelo | A la primera | Tras dos pasadas |
+|---|---|---|
+| `luna` | 19 | 3 |
+| `terra` | 20 | 1 |
+| `sol` | 22 | 0 |
+
+`luna` necesitó el bucle en tres casos y lo aprovechó en dos. `sol` no lo usó
+nunca: sus fallos se produjeron en el orquestador, antes de que el bucle exista,
+y el bucle no reintenta una clasificación de producto.
+
+Eso señala una limitación del diseño actual: **el bucle corrige la extracción, no
+la clasificación.** Los tres falsos negativos de `sol` son exactamente el caso que
+no puede rescatar.
+
+### Bug destapado por `terra`
+
+El caso `fechas_desordenadas` quedó excluido de la tanda de `terra` con
+`ValueError: effective_date debe ser anterior a maturity_date`. No fue un fallo del
+modelo: `terra` produjo un calendario de pagos sobre una petición con las fechas
+invertidas, y el validador llamó al generador de calendarios de referencia, que no
+puede construir uno sobre un plazo negativo y lanzó la excepción.
+
+`luna` y `sol` no lo destaparon porque dejaron el calendario vacío, y esa rama sí
+estaba protegida.
+
+Corregido: `_check_schedules` no comprueba el calendario cuando las fechas están
+invertidas, porque la incoherencia ya está registrada y no hay plazo sobre el que
+comprobar nada.
+
+### Contraste estadístico
+
+Ningún par alcanza potencia. El binomial exacto no puede bajar de 0,05 con menos de
+seis pares discordantes, y los pares observados son cuatro (`luna` frente a `sol`),
+uno (`luna` frente a `terra`) y tres (`sol` frente a `terra`).
+
+**Esto no debe redactarse como empate.** Con veintitrés casos y una repetición, la
+comparación entre modelos no tiene resolución estadística: los intervalos de Wilson
+—[78 %, 99 %] para `luna`, [85 %, 100 %] para `terra`, [67 %, 95 %] para `sol`— se
+solapan ampliamente. La diferencia de coste, en cambio, es de un orden de magnitud
+y no admite duda.
+
+### Limitaciones
+
+- **Una repetición.** Sin estimación de variabilidad.
+- **Veintitrés casos**, doce de ellos escritos por el autor del sistema. El sesgo
+  afecta al nivel absoluto; la comparación entre modelos, que usa los mismos casos,
+  es válida.
+- **La temperatura no es un eje.** Estos modelos solo aceptan su valor por omisión.
+- **`terra` ejecutó 21 casos de 23**, uno excluido por el defecto anterior y otro
+  no registrado.
+- **El coste de `sol` es promocional** hasta el 21 de noviembre de 2026. Citarlo en
+  la memoria exige hacer constar esa condición.
+
+---
+
+## Tanda 9 — Pendiente
+
+Relanzar las tres tandas con el defecto de `_check_schedules` corregido, para que
+`terra` complete los 23 casos. Después: repeticiones para medir variabilidad, y
+casos escritos por terceros para eliminar el sesgo de autoría.
 
 1. Repeticiones (`--repetitions 5`) para estimar variabilidad y estabilidad.
 2. Verificar las tarifas antes de publicar cualquier cifra de coste.

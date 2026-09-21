@@ -4,7 +4,7 @@ from hashlib import sha256
 from pathlib import Path
 from time import perf_counter
 
-from openai import OpenAI
+from openai import BadRequestError, OpenAI
 
 from agent_config import AgentsConfig, load_agents_config
 from evaluation.costs import cost_of
@@ -59,10 +59,40 @@ class LLMClient:
         # dejaria la tanda sin rastro de con que valor se midio.
         self.temperature = (self.config.temperature if temperature is None
                             else temperature)
+        # Se descubre en la primera llamada. Los modelos que solo aceptan su
+        # temperatura por omision quedan fuera del barrido de ese parametro.
+        self.temperature_supported = True
         self.telemetry = TelemetryStore(project_root / "outputs/evaluations.db")
 
     def _system_prompt(self, agent: str) -> str:
         return self.config.spec(agent).system_prompt(self.project_root)
+
+    def _create(self, system: str, user: str):
+        """Llamada al proveedor, omitiendo la temperatura si el modelo la rechaza.
+
+        La generacion actual de modelos no expone el parametro: acepta solo su
+        valor por omision y devuelve 400 ante cualquier otro. Se detecta el
+        rechazo y se reintenta sin el, anotandolo, en lugar de mantener una lista
+        de modelos que quedaria obsoleta con cada lanzamiento.
+
+        La consecuencia para los experimentos es real y hay que declararla: en
+        esos modelos la temperatura no es un eje que se pueda barrer.
+        """
+        messages = [{"role": "system", "content": system},
+                    {"role": "user", "content": user}]
+        if self.temperature_supported:
+            try:
+                return self.client.chat.completions.create(
+                    model=self.model, messages=messages,
+                    temperature=self.temperature,
+                )
+            except BadRequestError as exc:
+                if "temperature" not in str(exc):
+                    raise
+                self.temperature_supported = False
+        return self.client.chat.completions.create(
+            model=self.model, messages=messages
+        )
 
     def _call(self, agent: str, user: str) -> str:
         system = self._system_prompt(agent)
@@ -71,12 +101,7 @@ class LLMClient:
         prompt_hash = sha256(system.encode("utf-8")).hexdigest()[:12]
         started = perf_counter()
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[{"role": "system", "content": system},
-                          {"role": "user", "content": user}],
-                temperature=self.temperature,
-            )
+            response = self._create(system, user)
             content = response.choices[0].message.content
             if not content:
                 raise RuntimeError("OpenAI returned an empty response")

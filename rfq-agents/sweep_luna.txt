@@ -1,0 +1,30 @@
+tanda: 20260921T103244Z   fecha de referencia: 2026-09-21
+
+model            familia        case                   rep  campos    detalle                             ms
+--------------------------------------------------------------------------------------------------------------
+gpt-5.6-luna     cotizacion     cobertura_usd_10y        1  19/20     match=19 hallucinated=1           8982
+gpt-5.6-luna     cotizacion     en_spot_5y               1  19/20     match=19 hallucinated=1  iter:2   10061
+gpt-5.6-luna     cotizacion     es_fecha_explicita_10y   1  19/20     match=19 hallucinated=1          11543
+gpt-5.6-luna     cotizacion     es_spot_5y               1  18/20     match=18 wrong=1 hallucinated=1    7204
+gpt-5.6-luna     cotizacion     sin_convenciones_7y      1  19/20     match=19 hallucinated=1           8607
+gpt-5.6-luna     cotizacion     usd_proximo_lunes_3y     1  19/20     match=19 hallucinated=1           6357
+gpt-5.6-luna     incompletos    sin_direccion            1  19/20     match=19 hallucinated=1           3712
+gpt-5.6-luna     incompletos    sin_nocional             1  19/20     match=19 hallucinated=1           3974
+gpt-5.6-luna     jerga          abreviado_eur_val        1  19/20     match=19 hallucinated=1           8202
+gpt-5.6-luna     jerga          abreviado_usd_val        1  19/20     match=19 hallucinated=1           7106
+gpt-5.6-luna     jerga          pay_5y_50m_spot          1  19/20     match=19 hallucinated=1           7010
+gpt-5.6-luna     no_soportados  basis_swap               1   0/0                                        1498
+gpt-5.6-luna     no_soportados  eur_contra_sofr          1   0/0                                        3786
+gpt-5.6-luna     no_soportados  fechas_desordenadas      1   2/20     match=2 hallucinated=18           6306
+gpt-5.6-luna     no_soportados  gbp_fuera_alcance        1   0/0                                        1554
+gpt-5.6-luna     no_soportados  menos_de_un_ano          1   0/0                                        1718
+gpt-5.6-luna     no_soportados  swaption                 1   0/0                                        1173
+gpt-5.6-luna     valoracion     eur_no_estandar_3m       1  19/20     match=19 hallucinated=1  iter:4   18315
+gpt-5.6-luna     valoracion     eur_payer_5y             1  19/20     match=19 hallucinated=1           7042
+gpt-5.6-luna     valoracion     eur_periodo_roto         1  20/20     match=20                          7907
+gpt-5.6-luna     valoracion     eur_receiver_1y          1  19/20     match=19 hallucinated=1           7067
+gpt-5.6-luna     valoracion     usd_sofr_ois_3y          1  19/20     match=19 hallucinated=1           5677
+
+Resultados en C:\Users\mprietol\Documents\TFM Miguel\quant-agent-ensemble\rfq-agents\outputs\evaluations.db
+Informe de esta tanda:  python src/report.py --batch 20260921T103244Z
+Informe de todas:       python src/report.py --all-batches

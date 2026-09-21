@@ -1,0 +1,19 @@
+purpose: PAR_RATE_QUOTE
+notional: 10000000
+currency: "EUR"
+valuation_date: "2026-09-21"
+effective_date: "2026-10-10"
+maturity_date: "2024-10-10"
+discount_curve: "EUR-ESTR"
+fixed_leg {
+  day_count: "30U/360"
+  payment_frequency: "1Y"
+}
+floating_leg {
+  rate_type: IBOR
+  index: "EURIBOR"
+  tenor: "6M"
+  day_count: "ACT/360"
+  payment_frequency: "6M"
+  forecast_curve: "EUR-EURIBOR-6M"
+}

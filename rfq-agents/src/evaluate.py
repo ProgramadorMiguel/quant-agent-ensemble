@@ -13,7 +13,7 @@ from evaluation.metrics import FieldOutcome, compare_fields
 from evaluation.telemetry import TelemetryStore
 from llm_client import AgentOutputError
 from proto.proto_mapper import parse_irs_textproto
-from validation.irs_validator import validate_irs
+from validation.irs_validator import validate_irs, with_defaults
 
 # Etiqueta de producto que se registra cuando un agente responde algo que no
 # cumple su contrato de salida (por ejemplo "IRS." en lugar de "IRS"). La fila
@@ -36,7 +36,7 @@ class Golden:
     product_type: str  # IRS / UNSUPPORTED
 
 
-def load_golden(cases: Path, case_name: str) -> Golden:
+def load_golden(cases: Path, case_name: str, prompt: str = "") -> Golden:
     product = "IRS"
     product_file = cases / f"{case_name}.expected.product"
     if product_file.exists():
@@ -46,10 +46,14 @@ def load_golden(cases: Path, case_name: str) -> Golden:
         # Caso de rechazo: no hay campos que extraer y el flujo debe pararse en
         # el orquestador, de modo que la validacion no llega a ejecutarse.
         return Golden({}, "NOT_RUN", product)
-    fields = parse_irs_textproto(
+    # El dorado pasa por la misma normalizacion que la extraccion. Sin este paso
+    # el diferencial por omision aparecia en lo extraido y no en el dorado, y la
+    # comparacion contaba una alucinacion en todos los casos: una diferencia de
+    # tratamiento, no del modelo.
+    fields = with_defaults(parse_irs_textproto(
         expected_path.read_text(encoding="utf-8"), PROJECT_ROOT / "protos/pricing.proto"
-    )
-    status = "VALID" if validate_irs(fields).is_valid else "INVALID"
+    ))
+    status = "VALID" if validate_irs(fields, prompt).is_valid else "INVALID"
     return Golden(fields.model_dump(mode="json"), status, product)
 
 
@@ -105,7 +109,8 @@ def main() -> int:
                 case_name = prompt_path.name.removesuffix(".prompt.txt")
                 family = (prompt_path.parent.name
                           if prompt_path.parent != args.cases else "sin_familia")
-                golden = load_golden(prompt_path.parent, case_name)
+                golden = load_golden(prompt_path.parent, case_name,
+                                     prompt_path.read_text(encoding="utf-8"))
                 expected = golden.fields
 
                 started = perf_counter()
