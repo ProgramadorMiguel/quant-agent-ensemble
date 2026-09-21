@@ -1,6 +1,6 @@
 # Estado actual del trabajo
 
-Última actualización: **2026-09-14, 17:11** (Madrid).
+Última actualización: **2026-09-21, 09:45** (Madrid).
 
 Documento de retomada: qué está hecho, qué está a medias y cuál es el siguiente
 paso. Si vuelves al proyecto después de un tiempo, empieza por aquí.
@@ -12,19 +12,24 @@ paso. Si vuelves al proyecto después de un tiempo, empieza por aquí.
 **Copia de trabajo (la que tiene Git):**
 `C:\Users\mprietol\Documents\TFM Miguel\quant-agent-ensemble\rfq-agents`
 
-**Intérprete** (el venv vive en la copia antigua, es correcto usarlo):
-`C:\Users\mprietol\Documents\TFM Miguel\rfq-agents\.venv\Scripts\python.exe`
-
-**Comandos:**
+**Intérprete.** El venv sigue en la copia antigua del proyecto
+(`C:\Users\mprietol\Documents\TFM Miguel\rfq-agents\.venv`, Python 3.13). Es una
+fuente de confusión (dos copias, una sin Git) y ya ha causado una tanda medida
+con instrucciones desactualizadas. Pendiente: crear el venv dentro de esta copia
+con `python -m venv .venv; pip install -r requirements.lock` y retirar la antigua.
+Mientras tanto:
 
 ```powershell
 cd "C:\Users\mprietol\Documents\TFM Miguel\quant-agent-ensemble\rfq-agents"
 $py = "..\..\rfq-agents\.venv\Scripts\python.exe"
 
-& $py -m pytest -q                                   # 19 tests
+& $py -m pytest -q                                   # tests
 & $py src\evaluate.py --models gpt-4.1-mini          # lanza una tanda
 & $py src\report.py                                  # informe de la última tanda
 ```
+
+Requiere Python 3.11 o superior (`tomllib`). `requirements.lock` fija las
+versiones exactas con las que se midieron las tandas.
 
 El `.env` con la clave de OpenAI **no está en el repo** (correcto). Si falta:
 `copy "..\..\rfq-agents\.env" .env`
@@ -49,7 +54,19 @@ El `.env` con la clave de OpenAI **no está en el repo** (correcto). Si falta:
 | Comparación tres agentes frente a uno | ❌ Aplazado |
 | QuantLib en C++ | ❌ Aplazado |
 
-**19/19 tests pasan.**
+**Correcciones del 2026-09-15** (revisión del proyecto, sin relanzar tandas):
+
+- El coste por llamada ahora descuenta los tokens de entrada servidos desde la
+  caché de prompt de OpenAI (`prompt_tokens_details.cached_tokens`). Los costes
+  de las tandas 1 a 4 se calcularon sin ese descuento y están **sobreestimados**;
+  hay que relanzar antes de citar cifras de coste.
+- El evaluador distingue una salida fuera de contrato del agente (`IRS.` en vez
+  de `IRS`, o un `InterestRateSwap` no parseable) de un error de API. La primera
+  cuenta como fallo del caso con producto `MALFORMED`; la segunda se excluye del
+  agregado, como antes. Hasta hoy ambas se excluían.
+- Las bases de datos archivadas están en `evaluation/results/`, bajo Git.
+- `with_defaults` normaliza la frecuencia de pago a mayúsculas.
+- README: Python 3.11+ y `requirements.lock`.
 
 ---
 
@@ -124,8 +141,75 @@ Ha ocurrido dos veces hoy, de dos formas distintas:
 
 ---
 
+## Rediseño acordado en la reunión del 2026-09-15
+
+Las notas están en `../notas tutorias.txt` (fuera del repo). Cambian tres cosas de
+fondo que **contradicen decisiones actuales** y hay que planificar antes de
+seguir midiendo, porque invalidan los casos dorados:
+
+1. **Esquema.** `forecast_curve` pasa dentro de `floating_leg`. Cada pata lleva su
+   calendario de pagos completo y explícito, y **lo calcula el LLM**, no
+   `schedule.py` (motivo: periodos rotos). Hoy el skill prohíbe al agente emitir
+   `payment_dates`; habrá que invertirlo y medir la exactitud del calendario
+   como un campo más. Nota: el ejemplo de la reunión excluye la fecha de inicio
+   del vector (5 fechas fijas, 10 flotantes para 5 años); `schedule.py` hoy la
+   incluye como T_0 (6 y 11).
+2. **Obligatorios frente a convención.** Solo siete términos son impepinables
+   (`rate`, `maturity_date`, `valuation_date`, `effective_date`, `currency`,
+   `notional`, `is_fixed_rate_receiver`). El resto se deriva por convención de
+   mercado documentada (EUR y USD, vencimiento > 1 año). Esto invierte el
+   principio «nunca asumir» de `REQUIRED_TERMS`, del skill y de la familia
+   `incompletos`: los casos `sin_bases_calculo`, `sin_curvas` y `sin_frecuencias`
+   pasan a ser **válidos** y hay que añadir casos sin `rate`, sin `maturity`,
+   sin divisa. Conviene mantener medible la distinción entre «extraído del
+   texto» y «rellenado por convención» en la telemetría.
+3. **Bucle acotado.** Guardarraíles de sanidad (fechas absurdas, negativos) y
+   reintento vía orquestador con máximo 5 iteraciones. Hoy no hay bucle.
+
+## Rediseño acordado con el tutor (15/09/2026, respuesta 21/09/2026)
+
+Aprobado por él, pendiente de implementar. Detalle completo de convenciones en
+`docs/CONVENCIONES_MERCADO.md`.
+
+**Esquema**
+- `forecast_curve` pasa dentro de `floating_leg`
+- **Ambas patas** llevan vector de fechas de pago explícito
+- Motivo: con periodos rotos el calendario no se deduce de (inicio, vencimiento,
+  frecuencia). Los periodos rotos se piden en el *prompt*, no son automáticos
+- **Las fechas las calcula el LLM** (él lo dejó a criterio propio)
+- Mismo tipo para todos los periodos
+
+**Campos**
+- Obligatorios: `rate`, `maturity_date`, `valuation_date`, `effective_date`,
+  `currency`, `notional`, `is_fixed_rate_receiver`
+- Opcionales, derivables de convención: `day_count`, `payment_frequency`,
+  `tenor`, `index`, curvas
+- ⚠️ Esto **invierte** la regla actual de no rellenar nada. Afecta a la métrica de
+  alucinación: habrá que distinguir «derivado de convención documentada» de
+  «inventado»
+
+**Arquitectura**
+- Bucle acotado a **5 iteraciones**, no hasta el éxito
+- Guardarraíles de sanidad: no fechas del año 1050, no negativos donde no procede
+- Si no valida, vuelve al orquestador con el error
+- Sin revisión humana. Contrato: entrada → error o RFQ bien conformada
+
+**Alcance:** solo EUR y USD. GBP descartado.
+
+### Bloqueante: los OIS pasan a ser producto soportado
+
+Un *swap* vanilla USD **es** un OIS desde el cese del LIBOR. Decisión del
+21/09/2026: aceptarlos. Implica reescribir la sección del orquestador que los
+rechaza y que presupone un «SOFR 3M» inexistente, rehacer los casos dorados USD, y
+decidir cómo modelar `tenor`, que es obligatorio en EUR y no aplica en USD.
+
+---
+
 ## Tareas pendientes, por orden
 
+0. **Planificar el rediseño anterior** y decidir qué casos dorados se reescriben.
+   Relanzar la tanda 4 tras las correcciones de hoy para tener cifras de coste
+   correctas del diseño actual antes de cambiarlo (sirve de línea base).
 1. **Repeticiones** (`--repetitions 5`) para estimar variabilidad. Todas las
    cifras actuales son de una sola pasada, con intervalos anchos.
 2. **Verificar tarifas** en `config/model_costs.toml`. El informe avisa de que
@@ -170,8 +254,22 @@ nombres de campo y las simplificaciones adoptadas.
 
 ---
 
+## Documentos del proyecto
+
+| Fichero | Contenido |
+|---|---|
+| `ESTADO_ACTUAL.md` | Este documento: retomada y estado |
+| `CONVENCIONES_MERCADO.md` | Convenciones EUR y USD verificadas, con fuentes |
+| `REGISTRO_EXPERIMENTOS.md` | Bitácora de tandas con diagnóstico |
+| `ARQUITECTURA.md` | Diseño objetivo, con tabla de qué está implementado |
+| `FLUJO_AGENTES.md` | Flujo real con trazas de ejecución |
+| `Overleaf/referencias.bib` | Bibliografía en formato biblatex |
+
+---
+
 ## Bitácora de experimentos
 
 `docs/REGISTRO_EXPERIMENTOS.md` recoge cada tanda con su configuración, su salida
 literal y el diagnóstico de sus fallos. Las bases de datos se archivan en
-`outputs/` con nombre versionado.
+`evaluation/results/` con nombre versionado y bajo Git; `outputs/evaluations.db`
+es solo la copia de trabajo y no se versiona.

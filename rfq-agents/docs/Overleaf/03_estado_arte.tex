@@ -1,0 +1,106 @@
+\chapter{Estado del arte}
+
+\section{Automatización de procesos financieros y de \textit{pricing}}
+
+La automatización de procesos en el sector financiero ha ganado importancia por su capacidad para reducir tiempos operativos, disminuir errores manuales y mejorar la trazabilidad. Este interés es especialmente relevante en tareas donde intervienen datos sensibles y donde pequeños fallos pueden tener impacto económico o regulatorio.
+
+Dentro de este marco, los procesos de \textit{pricing} presentan una dificultad específica. Antes de realizar una valoración, es necesario identificar correctamente las características de la operación, estructurar la información de entrada y verificar que los datos sean coherentes con el producto solicitado.
+
+En muchos casos, una petición de valoración o \textit{Request for Quotation} (\textit{RFQ}) no llega en un formato estructurado, sino en lenguaje natural, por ejemplo a través de correo electrónico o mensajería interna. Esto obliga a interpretar la operación antes de poder procesarla con un sistema cuantitativo, introduciendo lentitud, ambigüedad y riesgo de error.
+
+Por ello, la automatización de la fase previa al cálculo resulta especialmente relevante. No se trata solo de acelerar tareas manuales, sino de transformar descripciones informales en representaciones precisas, validadas y utilizables por motores de valoración. En productos como los \textit{Interest Rate Swaps} (\textit{IRS}), donde la valoración depende de parámetros contractuales concretos, la calidad de esta transformación condiciona directamente la utilidad del proceso posterior.
+
+\begin{figure}[H]
+    \centering
+    \fbox{
+        \begin{minipage}{0.85\textwidth}
+        \centering
+        Lenguaje natural / correo / chat\\
+        $\downarrow$\\
+        Interpretación de la operación\\
+        $\downarrow$\\
+        Estructuración de campos\\
+        $\downarrow$\\
+        Validación\\
+        $\downarrow$\\
+        Motor de valoración
+        \end{minipage}
+    }
+    \caption[Flujo simplificado de una petición de pricing]{Flujo simplificado de una petición de \textit{pricing}}
+    \floatfoot{Fuente: elaboración propia.}
+\end{figure}
+
+\section{Representación digital de contratos y productos derivados}
+
+La representación digital de productos derivados es un elemento esencial en los sistemas financieros modernos, ya que permite describir operaciones de forma precisa y procesable por aplicaciones informáticas. Frente al lenguaje natural, los formatos estructurados reducen la ambigüedad y facilitan la validación automática de la información.
+
+Esta necesidad es especialmente relevante en derivados, donde una misma operación puede depender de múltiples campos contractuales. Fechas, nocional, divisa, índice de referencia, frecuencia de pagos o convención de cálculo deben quedar definidos de forma explícita para evitar inconsistencias en su interpretación o en su valoración posterior.
+
+A lo largo del tiempo se han utilizado distintos formatos para representar este tipo de información. Entre ellos destacan XML y JSON como opciones generales, así como FpML, un estándar abierto orientado específicamente al intercambio electrónico y procesamiento de derivados financieros \citep{fpml-home}. Estos enfoques han mejorado la interoperabilidad entre sistemas, aunque también pueden resultar extensos o complejos según el caso de uso.
+
+En este contexto, \textit{Protocol Buffers} constituye una alternativa orientada a la definición de estructuras tipadas, compactas y eficientes. No se trata de un estándar sectorial específico para derivados, como sí ocurre con FpML, pero sí de una tecnología ampliamente utilizada para serialización de datos, almacenamiento e intercambio de mensajes entre servicios \citep{protobuf-overview}. Por ello, su interés en este trabajo no radica en su adopción como estándar de mercado, sino en sus ventajas técnicas para modelar operaciones de forma rigurosa, validable e integrable en flujos internos de procesamiento.
+
+Para un sistema que transforma lenguaje natural en una RFQ estructurada, la existencia de un esquema formal resulta especialmente valiosa. No solo permite representar la operación de manera consistente, sino también separar con claridad la definición del producto, la instancia concreta solicitada y las validaciones necesarias antes de su uso en un motor de valoración.
+
+\begin{table}[H]
+\ttabbox[\FBwidth]
+{\caption{Comparación entre formatos de representación de operaciones financieras}
+\floatfoot{Fuente: elaboración propia a partir de \textcite{fpml-home} y \textcite{protobuf-overview}.}}
+{\begin{tabular}{|P{2.5cm}|P{1.8cm}|P{1.3cm}|P{2.6cm}|P{2.8cm}|P{3.2cm}|}
+\hline
+\textbf{Formato} & \textbf{Ambigüedad} & \textbf{Tipado} & \textbf{Ventaja principal} & \textbf{Limitación principal} & \textbf{Decisión en este trabajo} \\
+\hline
+Lenguaje natural & Alta & No & Flexible y fácil de usar por humanos & Difícil de validar automáticamente & Formato de entrada \\
+\hline
+JSON / XML & Media & Parcial & Permiten estructurar e intercambiar datos & Requieren definir bien el esquema & Descartado por menor control semántico \\
+\hline
+FpML & Baja & Sí & Estándar específico para derivados financieros & Puede ser extenso y complejo & Descartado por complejidad \\
+\hline
+Protocol Buffers & Baja & Sí & Mensajes compactos, tipados y eficientes & No es un estándar sectorial de mercado & Elegido por tipado y validación \\
+\hline
+\end{tabular}}
+\end{table}
+
+\section{Extracción estructurada de información con LLM}
+
+Los modelos de lenguaje de gran tamaño han ampliado de forma notable las posibilidades de extraer información estructurada a partir de texto libre. Esta capacidad resulta especialmente útil en contextos donde la entrada no sigue un formato fijo, como ocurre en muchas solicitudes financieras redactadas en lenguaje natural \citep{roychoudhury2024gpt3ie}.
+
+Sin embargo, transformar una descripción textual en una estructura formal no es una tarea trivial para un LLM. La dificultad no reside solo en identificar entidades o valores aislados, sino en construir una representación completa, coherente y ajustada a las restricciones del producto financiero. En este proceso pueden aparecer ambigüedades, campos omitidos, expresiones equivalentes con distinta redacción o información implícita que el modelo debe interpretar correctamente.
+
+A ello se añade un problema bien conocido en este tipo de modelos: la generación de salidas plausibles que no siempre son correctas. En un contexto financiero, esta limitación es especialmente relevante, ya que un campo omitido, inferido incorrectamente o directamente inventado puede alterar de forma sustancial la representación final de la operación \citep{bechard2024structuredrag}.
+
+Por este motivo, la extracción estructurada con LLM no debe abordarse como una tarea puramente generativa, sino como un problema que requiere restricciones, validaciones y criterios de evaluación claros. El interés no está únicamente en que la salida sea legible, sino en que respete el esquema esperado, conserve la información presente en la entrada y evite introducir contenido no justificado.
+
+En consecuencia, los trabajos en esta línea suelen combinar la flexibilidad interpretativa de los LLM con mecanismos adicionales de control. Entre ellos destacan el uso de esquemas de salida, instrucciones acotadas y validaciones deterministas posteriores, así como métricas que permitan evaluar omisiones, errores de asignación y alucinaciones. Este enfoque resulta especialmente adecuado en tareas como la conversión de lenguaje natural a RFQ estructuradas, donde la calidad de la representación condiciona directamente el valor de todo el flujo posterior.
+
+\section{Uso de arquitecturas multiagente en tareas complejas}
+
+Las arquitecturas multiagente han ganado relevancia como una forma de abordar tareas que resultan difíciles de resolver mediante una única llamada a un modelo. En lugar de concentrar toda la carga en un solo agente, este enfoque distribuye funciones entre varios componentes especializados, por ejemplo planificación, razonamiento, ejecución o validación.
+
+Esta separación puede ser útil cuando el problema exige varios pasos, distintos tipos de conocimiento o controles intermedios. En estos casos, una arquitectura multiagente permite dividir el trabajo, acotar mejor cada subtarea y reducir parte de la complejidad que asumiría un único modelo actuando de forma monolítica.
+
+En el contexto de los LLM, este enfoque suele materializarse en patrones como orquestador-trabajadores, evaluador-optimizador o cadenas con validación intermedia. Su interés principal radica en que facilitan la modularidad, la especialización de instrucciones y la incorporación de mecanismos de supervisión o corrección durante el proceso \citep{anthropic-effective-agents}.
+
+Sin embargo, estas arquitecturas también introducen costes adicionales. Aumentan la latencia, el número de llamadas al modelo y la complejidad de coordinación entre componentes. Además, si el diseño no está bien acotado, pueden propagar errores entre etapas o generar una falsa sensación de robustez. Por ello, su utilidad depende no solo de la capacidad de cada agente por separado, sino de la calidad del flujo completo y de los criterios de validación que articulan la interacción entre ellos.
+
+En tareas como la conversión de lenguaje natural a una RFQ estructurada, una arquitectura multiagente puede resultar adecuada cuando se desea separar la interpretación general de la solicitud, la especialización en el producto y la generación final de la estructura de salida. Esta descomposición no elimina el riesgo de error, pero sí permite diseñar puntos de control más claros y comparar de forma más transparente un enfoque monolítico frente a uno secuencial o distribuido.
+
+\section{Aplicación de IA generativa en finanzas}
+
+La aplicación de modelos generativos en finanzas ha crecido de forma notable en los últimos años, impulsada por su capacidad para procesar grandes volúmenes de información, generar texto contextualizado y asistir en tareas analíticas que antes requerían una intervención manual intensiva. Este interés se ha extendido desde usos generales de análisis documental o asistencia operativa hasta casos más específicos relacionados con forecasting, análisis financiero, atención al cliente, cumplimiento normativo y apoyo a la toma de decisiones \citep{yordanova2025financialagents}.
+
+Dentro de este panorama, los LLM han despertado especial atención por su capacidad para interactuar con lenguaje natural, resumir documentos, extraer información relevante y producir salidas estructuradas o semiestructuradas. En el ámbito financiero, estas capacidades resultan atractivas porque muchos procesos combinan documentos no estructurados, reglas de negocio, terminología especializada y necesidad de respuesta rápida. Por ello, la IA generativa empieza a verse no solo como una herramienta de automatización, sino también como un apoyo para tareas cognitivas de mayor nivel \citep{yordanova2025financialagents}.
+
+No obstante, la aplicación de estos modelos en finanzas también presenta limitaciones importantes. La fiabilidad de la salida, la trazabilidad de las decisiones, la sensibilidad regulatoria del dominio y el riesgo de introducir errores plausibles pero incorrectos obligan a adoptar estos sistemas con cautela. En consecuencia, una parte creciente de la literatura y de las implementaciones prácticas insiste en combinar capacidades generativas con supervisión humana, validaciones adicionales y marcos de gobernanza apropiados \citep{smith2024qtcai,yordanova2025financialagents}.
+
+En este contexto, la relevancia de la IA generativa para este trabajo no reside en sustituir el juicio financiero humano, sino en explorar hasta qué punto puede servir como capa intermedia entre descripciones lingüísticas flexibles y estructuras formales utilizables por sistemas posteriores. Esta orientación resulta especialmente adecuada en tareas donde la dificultad principal no está en el cálculo numérico en sí, sino en la correcta interpretación y formalización de la información de entrada.
+
+\section{Limitaciones de los enfoques actuales y oportunidad de investigación}
+
+A pesar de los avances revisados, los enfoques actuales siguen mostrando limitaciones relevantes cuando se aplican a flujos reales de trabajo financiero. En particular, persiste una brecha entre la flexibilidad del lenguaje natural con la que se describen muchas operaciones y la precisión formal que exigen los sistemas posteriores de validación, representación y valoración.
+
+Los estándares de representación estructurada resuelven parte del problema, pero no la fase previa de interpretación. Del mismo modo, los LLM aportan capacidad para procesar texto libre, aunque siguen presentando riesgos de omisión, inferencia incorrecta y generación de contenido no justificado. Por su parte, las arquitecturas multiagente permiten repartir funciones y añadir controles intermedios, pero también aumentan la complejidad del sistema y no garantizan por sí mismas la corrección del resultado final.
+
+En consecuencia, el problema no consiste únicamente en elegir una tecnología concreta, sino en diseñar un flujo capaz de conectar tres requisitos que rara vez aparecen resueltos al mismo tiempo: comprensión de lenguaje natural, representación estructurada fiable y validación determinista posterior. Esta tensión se vuelve especialmente visible en contextos como las peticiones de \textit{pricing} de derivados, donde una descripción lingüística ambigua debe convertirse en una estructura formal suficientemente precisa para alimentar procesos posteriores sin introducir errores.
+
+En este punto aparece la oportunidad de investigación de este trabajo. Existe espacio para estudiar hasta qué punto un sistema basado en LLM, apoyado por una arquitectura de agentes y una capa de validación explícita, puede actuar como puente entre solicitudes financieras expresadas en lenguaje natural y representaciones estructuradas utilizables por un flujo cuantitativo posterior. Más que competir con motores de valoración o estándares de mercado consolidados, la contribución se sitúa en la capa intermedia de traducción, formalización y control, que es precisamente donde muchos procesos siguen dependiendo de intervención manual.

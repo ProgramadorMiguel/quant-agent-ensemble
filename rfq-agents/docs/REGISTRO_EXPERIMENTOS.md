@@ -9,8 +9,17 @@ un cambio de comportamiento a una causa concreta. Una tanda con fallos y causa
 identificada aporta más al capítulo de resultados que una tanda limpia sin
 explicación.
 
-Las bases de datos completas de cada tanda se archivan en `outputs/`, de modo que
-cualquier cifra de esta bitácora es reconstruible con `python src/report.py --db`.
+Las bases de datos completas de cada tanda se archivan en `evaluation/results/`,
+que sí está bajo control de versiones (`outputs/` no lo está, y ahí solo vive la
+base de datos activa). Cualquier cifra de esta bitácora es reconstruible con
+`python src/report.py --db evaluation/results/<fichero>.db --batch <id>`.
+
+| Fichero | Contenido |
+|---|---|
+| `evaluations_v2_conteo_10campos.db` | Tanda 1 (sin `batch_id`; comparador de 10 campos) |
+| `evaluations_v3_mezcla_t2_t3.db` | Tandas 2 y 3 mezcladas, 28 filas sin `batch_id` |
+| `evaluations_v4_t3_t4.db` | `20260914T124125Z` (tanda 3) y `20260914T144900Z` (relanzamiento con instrucciones aún no guardadas en disco, descartado) |
+| `evaluations_v5_t4.db` | `20260914T150109Z` (tanda 4) |
 
 ---
 
@@ -24,7 +33,7 @@ cualquier cifra de esta bitácora es reconstruible con `python src/report.py --d
 | **Repeticiones** | 1 |
 | **Topología** | Cadena de tres agentes |
 | **Esquema** | IRS con dos patas y doble curva |
-| **Base de datos** | `outputs/evaluations_v2_conteo_10campos.db` |
+| **Base de datos** | `evaluation/results/evaluations_v2_conteo_10campos.db` |
 
 ### Salida literal del evaluador
 
@@ -194,7 +203,7 @@ diez campos, alcanzaba coincidencia completa.
 | **Casos** | 14, en cuatro familias (los mismos de la tanda 1) |
 | **Repeticiones** | 1 |
 | **Cambio respecto a la tanda 1** | Orquestador con la ambigüedad del índice a un día resuelta; comparador de campos aplanado |
-| **Base de datos** | `outputs/evaluations.db` |
+| **Base de datos** | `evaluation/results/evaluations_v3_mezcla_t2_t3.db` (sin `batch_id`, junto con la tanda 3) |
 
 ### Salida literal del evaluador
 
@@ -318,6 +327,7 @@ que no es protobuf válido.
 | **Casos** | 14, en cuatro familias |
 | **Repeticiones** | 1 |
 | **Cambio respecto a la tanda 2** | Caso dorado `abreviado_eur_rec` corregido; identificador de tanda introducido |
+| **Base de datos** | `evaluation/results/evaluations_v4_t3_t4.db` |
 
 ### Resultado
 
@@ -424,6 +434,7 @@ contrastado, y detalla cómo emitir campos repetidos.
 | **Repeticiones** | 1 |
 | **Cambio respecto a la tanda 3** | Los tres defectos de medición del agente proto, corregidos |
 | **Hash de instrucciones del agente proto** | `39ef285eb8c0` (la tanda 3 usó `501782dae533`) |
+| **Base de datos** | `evaluation/results/evaluations_v5_t4.db` |
 
 ### Resultado
 

@@ -1,0 +1,23 @@
+\chapter{Planificación y metodología de desarrollo}
+
+Este capítulo describe la organización seguida durante el desarrollo del proyecto. En primer lugar, se presenta el enfoque de trabajo adoptado. Después se detallan las fases del proyecto, su distribución temporal, los principales riesgos y las decisiones tomadas para limitar el alcance. Finalmente, se expone la metodología experimental utilizada para evaluar el sistema.
+
+La planificación no se concibió como una secuencia completamente cerrada desde el inicio. La definición del problema, el esquema de representación de los productos financieros y los criterios de evaluación evolucionaron a medida que se revisaron los resultados y se incorporaron nuevas necesidades. Por este motivo, el proyecto se organizó mediante ciclos sucesivos de diseño, implementación, prueba y revisión.
+
+\section{Enfoque de trabajo}
+
+El desarrollo siguió un enfoque iterativo e incremental. En lugar de intentar construir desde el principio una solución completa para diferentes productos derivados, se definió una primera versión limitada a peticiones de valoración de \textit{IRS vanilla}. Esta delimitación permitió validar por separado la interpretación del lenguaje natural, la representación estructurada de la operación y las reglas necesarias para comprobar su coherencia.
+
+Cada iteración partió de un conjunto concreto de requisitos y produjo una versión ejecutable del sistema. Sobre esta versión se realizaron pruebas destinadas a identificar errores en la extracción de información, omisiones, valores no justificados e incompatibilidades con la estructura esperada. Los resultados obtenidos se utilizaron para revisar tanto la implementación como las instrucciones proporcionadas a los modelos y los casos empleados como referencia.
+
+Este proceso de revisión resultó especialmente importante porque un resultado incorrecto no implica necesariamente un fallo del modelo de lenguaje. El error también puede proceder de una instrucción ambigua, de información que no se ha proporcionado a un componente o de una referencia de evaluación que no representa correctamente la salida esperada. Por ello, antes de modificar el modelo o atribuirle un fallo, se comprobó que la tarea estuviera definida de forma inequívoca, que la información de entrada fuera suficiente y que el caso de referencia pudiera alcanzarse a partir de dicha información.
+
+El trabajo combinó componentes probabilísticos y deterministas. Los primeros se utilizaron para interpretar las peticiones en lenguaje natural y generar la representación solicitada. Los segundos se emplearon para aplicar reglas explícitas, comprobar restricciones y determinar si la operación obtenida era válida. Esta separación permitió utilizar la capacidad interpretativa de los modelos de lenguaje sin depender exclusivamente de ellos para verificar la corrección de la salida.
+
+La evolución del proyecto se gestionó mediante control de versiones. Los cambios en el código, los esquemas, las instrucciones y los casos de prueba quedaron asociados a versiones identificables. Además, las ejecuciones experimentales se agruparon en tandas independientes para evitar que resultados obtenidos con configuraciones o referencias diferentes se combinaran en un mismo análisis. Esta separación resulta necesaria para mantener la trazabilidad y poder reproducir las condiciones de cada experimento.
+
+La configuración de los modelos y de los componentes encargados de procesar las peticiones se mantuvo separada del código principal. De esta forma, parámetros como el modelo utilizado, la temperatura o las instrucciones pueden modificarse sin alterar la lógica general del programa. Este planteamiento facilita la comparación entre configuraciones y reduce el riesgo de introducir cambios no controlados durante la experimentación.
+
+Las revisiones realizadas durante el proyecto también permitieron modificar decisiones iniciales. Entre los cambios más relevantes se encuentran la ampliación de la estructura de los \textit{IRS}, la diferenciación entre campos obligatorios y atributos derivados mediante convenciones de mercado, la representación explícita de las fechas de pago y la definición de un proceso de corrección limitado a cinco intentos. Estos cambios no se trataron como desviaciones aisladas, sino como parte del proceso incremental de refinamiento de los requisitos.
+
+En conjunto, el enfoque adoptado permitió avanzar desde una versión mínima y verificable hacia una definición más completa del problema. Cada iteración produjo evidencia utilizada para corregir errores, revisar supuestos y decidir el siguiente incremento, manteniendo separados el desarrollo de la solución y su evaluación experimental.

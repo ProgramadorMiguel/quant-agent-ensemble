@@ -220,10 +220,11 @@ PRODUCT_REGISTRY: dict[str, ProductSpec] = {...}
 
 ### 4.3 El tercer agente: de ceremonia a métrica
 
-Situación actual: `app_service.py:78` exige que la salida del `rfq_proto_agent`
-sea idéntica byte a byte a `fields_to_textproto(...)`. Si debe ser idéntica al
-mapper determinista, el agente no aporta nada y solo añade un modo de fallo y un
-coste. Un tribunal lo va a señalar.
+Situación de partida (MVP original, antes del commit 46b15cd): `app_service.py`
+exigía que la salida del `rfq_proto_agent` fuese idéntica byte a byte a
+`fields_to_textproto(...)` y abortaba la ejecución si no lo era. Si debe ser
+idéntica al mapper determinista, el agente no aporta nada y solo añade un modo de
+fallo y un coste. Un tribunal lo va a señalar.
 
 Decisión tomada e **implementada el 2026-08-26**: **el mapper determinista es la
 verdad del sistema**
