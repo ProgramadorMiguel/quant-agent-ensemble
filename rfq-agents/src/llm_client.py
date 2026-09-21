@@ -14,6 +14,30 @@ from proto.proto_mapper import parse_irs_textproto
 from settings import Settings
 
 
+class AgentOutputError(RuntimeError):
+    """The model answered, but not with the contract its instructions demand.
+
+    Distinct from a provider failure on purpose: a timeout is not a fact about
+    the model, whereas ``IRS.`` instead of ``IRS`` is. The evaluator counts the
+    former as an excluded run and the latter as a failed case.
+
+    Carries the ``run_id`` so the evaluation row can still be linked to the
+    ``api_calls`` that were recorded before the failure.
+    """
+
+    def __init__(self, message: str, run_id: str | None = None):
+        super().__init__(message)
+        self.run_id = run_id
+
+
+def _cached_tokens(usage) -> int | None:
+    """Tokens de entrada servidos desde la cache de prompt, si el proveedor lo informa."""
+    details = getattr(usage, "prompt_tokens_details", None)
+    if details is None:
+        return None
+    return getattr(details, "cached_tokens", None)
+
+
 class LLMClient:
     """Executes the agent pipeline declared in config/agents.yaml."""
 
@@ -53,6 +77,11 @@ class LLMClient:
             usage = response.usage
             input_tokens = getattr(usage, "prompt_tokens", None)
             output_tokens = getattr(usage, "completion_tokens", None)
+            # OpenAI cachea automaticamente los prefijos de prompt largos y los
+            # factura a tarifa reducida. El prompt de sistema del especialista
+            # (instrucciones + skill + esquema) supera ese umbral, asi que sin
+            # este dato el coste calculado sobreestima la factura real.
+            cached_tokens = _cached_tokens(usage)
             self.telemetry.record_call(
                 run_id=self.run_id, agent=agent, model=self.model,
                 latency_ms=(perf_counter() - started) * 1000, status="SUCCESS",
@@ -60,7 +89,9 @@ class LLMClient:
                 input_tokens=input_tokens, output_tokens=output_tokens,
                 total_tokens=getattr(usage, "total_tokens", None),
                 provider="openai", prompt_hash=prompt_hash,
-                cost_usd=cost_of(self.project_root, self.model, input_tokens, output_tokens),
+                cached_input_tokens=cached_tokens,
+                cost_usd=cost_of(self.project_root, self.model, input_tokens,
+                                 output_tokens, cached_tokens),
             )
             return content.strip()
         except Exception as exc:
@@ -75,12 +106,24 @@ class LLMClient:
     def classify_product(self, prompt: str) -> str:
         result = self._call("orchestrator", prompt)
         if result not in {"IRS", "UNSUPPORTED"}:
-            raise RuntimeError(f"Invalid product classification: {result!r}")
+            raise AgentOutputError(
+                f"Invalid product classification: {result!r}", self.run_id
+            )
         return result
 
     def extract_irs(self, prompt: str) -> IRSFields:
         proto_text = self._call("product_specialist", prompt)
-        return parse_irs_textproto(proto_text, self.project_root / "protos/pricing.proto")
+        try:
+            return parse_irs_textproto(
+                proto_text, self.project_root / "protos/pricing.proto"
+            )
+        except Exception as exc:
+            # Texto que no es un InterestRateSwap parseable: fallo del modelo
+            # frente a su contrato de salida, no de la infraestructura.
+            raise AgentOutputError(
+                f"Product specialist output is not a valid InterestRateSwap: {exc}",
+                self.run_id,
+            ) from exc
 
     def generate_proto_text(
         self,

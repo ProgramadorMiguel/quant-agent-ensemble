@@ -96,3 +96,21 @@ def test_unknown_conventions_are_rejected():
     ))
     assert any("day_count must be one of" in e for e in report.errors)
     assert any("payment_frequency must be one of" in e for e in report.errors)
+
+
+def test_lowercase_frequency_passes_validation_and_is_normalised():
+    """El validador acepta '6m'; with_defaults la lleva a '6M' para que la RFQ
+    no salga en minuscula."""
+    fields = valid_fields(
+        fixed_leg=FixedLegFields(
+            rate=Decimal("0.0275"), day_count="30/360", payment_frequency="1y"
+        ),
+        floating_leg=FloatingLegFields(
+            index="EURIBOR", tenor="6M", day_count="ACT/360", payment_frequency="6m"
+        ),
+    )
+    assert validate_irs(fields).is_valid
+    defaulted = with_defaults(fields)
+    assert defaulted.fixed_leg.payment_frequency == "1Y"
+    assert defaulted.floating_leg.payment_frequency == "6M"
+    assert defaulted.floating_leg.spread == Decimal(0)

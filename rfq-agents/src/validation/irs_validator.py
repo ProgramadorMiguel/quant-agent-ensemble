@@ -45,14 +45,26 @@ def with_defaults(fields: IRSFields) -> IRSFields:
     entrada. Cuando el valor por omision se aplicaba dentro del mapeador, el
     agente recibia una entrada distinta y la comparacion entre los dos media esa
     diferencia de entrada en lugar de su capacidad de serializar.
+
+    Tambien normaliza las etiquetas de frecuencia a mayusculas. El validador las
+    acepta sin distinguir mayusculas, asi que sin este paso una frecuencia ``6m``
+    superaba la validacion y llegaba en minuscula a la RFQ.
     """
-    if fields.floating_leg.spread is not None:
-        return fields
+    fixed = fields.fixed_leg
+    floating = fields.floating_leg
+    fixed_update = {"payment_frequency": _upper(fixed.payment_frequency)}
+    floating_update = {
+        "payment_frequency": _upper(floating.payment_frequency),
+        "spread": floating.spread if floating.spread is not None else Decimal(0),
+    }
     return fields.model_copy(update={
-        "floating_leg": fields.floating_leg.model_copy(
-            update={"spread": Decimal(0)}
-        )
+        "fixed_leg": fixed.model_copy(update=fixed_update),
+        "floating_leg": floating.model_copy(update=floating_update),
     })
+
+
+def _upper(value: str | None) -> str | None:
+    return value.upper() if value is not None else value
 
 DAY_COUNTS = ("ACT/360", "ACT/365", "ACT/365.25", "30/360")
 

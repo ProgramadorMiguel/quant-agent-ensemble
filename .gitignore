@@ -1,3 +1,4 @@
-notas.txt
+# Notas personales de tutorias (cualquier variante del nombre)
+notas*.txt
 .venv/
 __pycache__/

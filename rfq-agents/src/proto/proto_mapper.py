@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 import tempfile
+from functools import lru_cache
 from pathlib import Path
 
 from google.protobuf import json_format, text_format
@@ -12,7 +13,14 @@ from models.irs_fields import FixedLegFields, FloatingLegFields, IRSFields
 from models.schedule import payment_dates
 
 
+@lru_cache(maxsize=4)
 def _load_pricing_module(proto_path: Path):
+    """Compila (si hace falta) y carga el modulo generado, una vez por proceso.
+
+    Sin la cache, cada llamada volvia a ejecutar el modulo pb2 y a registrar el
+    mismo descriptor en el pool de protobuf. Funcionaba porque protobuf tolera
+    el duplicado identico, pero era trabajo repetido en cada RFQ.
+    """
     cache_dir = Path(tempfile.gettempdir()) / "rfq_agents_proto"
     cache_dir.mkdir(parents=True, exist_ok=True)
     generated = cache_dir / "pricing_pb2.py"

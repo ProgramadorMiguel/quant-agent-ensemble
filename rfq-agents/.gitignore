@@ -3,6 +3,9 @@
 __pycache__/
 .pytest_cache/
 *.py[cod]
+# Salidas de trabajo: RFQs, informes de validacion y la base de datos activa.
+# Las bases de datos archivadas de cada tanda viven en evaluation/results/ y SI
+# se versionan: son la evidencia de la memoria.
 outputs/**
 !outputs/.gitkeep
 evaluation/cases/*.result.txt

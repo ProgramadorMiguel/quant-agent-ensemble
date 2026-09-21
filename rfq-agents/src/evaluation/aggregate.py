@@ -26,7 +26,7 @@ class CaseAggregate:
     repetitions: int
     product_ok: bool
     validation_ok: bool
-    exact_ok: bool                 # los 10 campos correctos en todas las reps
+    exact_ok: bool                 # todos los terminos correctos en todas las reps
     scored: bool                   # el caso tiene campos que puntuar
     field_accuracy_mean: float     # media de las reps de este caso
     hallucinated: int              # total de campos inventados en las reps
@@ -57,8 +57,9 @@ class ModelAggregate:
     def field_accuracy_mean(self) -> float:
         """Macro-media sobre casos: cada caso pesa igual, no cada campo.
 
-        No se le pone intervalo de Wilson: los diez campos de un caso estan
-        correlacionados y no son ensayos de Bernoulli independientes.
+        No se le pone intervalo de Wilson: los terminos de un caso (16 con las
+        dos patas aplanadas) estan correlacionados y no son ensayos de
+        Bernoulli independientes.
         """
         scored = [c.field_accuracy_mean for c in self.cases if c.scored]
         return mean(scored) if scored else 0.0

@@ -20,7 +20,9 @@ stable boundary for the CLI and a future Streamlit UI.
 
 ## Setup
 
-Python 3.10 or newer is recommended.
+Python 3.11 or newer is required: `src/evaluation/costs.py` reads
+`config/model_costs.toml` with the standard-library `tomllib`, which does not
+exist in 3.10.
 
 ```powershell
 cd rfq-agents
@@ -29,6 +31,11 @@ python -m venv .venv
 pip install -r requirements.txt
 Copy-Item .env.example .env
 ```
+
+`requirements.txt` declares the version ranges the code is written against.
+`requirements.lock` pins the exact versions the results in
+`docs/REGISTRO_EXPERIMENTOS.md` were measured with (Python 3.13); use
+`pip install -r requirements.lock` to reproduce them.
 
 Edit `.env` and replace the placeholder with a real OpenAI API key. The key is
 never committed. `LLM_MODEL` defaults to `gpt-4.1-mini`.
@@ -98,9 +105,14 @@ pipeline.
 
 ## Sample RFQs
 
-`samples/` holds RFQs produced end to end by the agent network from the prompts
-in `examples/`. Filenames match, so `examples/<case>.txt` is the request that
-produced `samples/<case>.textproto`.
+`samples/` is meant to hold RFQs produced end to end by the agent network from
+the prompts in `examples/`. Filenames match, so `examples/<case>.txt` is the
+request that produced `samples/<case>.textproto`.
+
+The directory is currently empty and not tracked: the samples were removed when
+the schema moved to two legs and two curves (commit 6339fec), since they no
+longer parsed against `pricing.proto`, and have not been regenerated since.
+Run the command below to rebuild them once the schema is stable.
 
 Protobuf text format is the only output written by default: JSON is not an
 interchange format in this project. Pass `--json` to also emit the canonical
@@ -192,6 +204,11 @@ Results accumulate in `outputs/evaluations.db`. Print the comparison with:
 ```powershell
 python src/report.py
 ```
+
+`outputs/` is not tracked. Once a batch is cited in
+`docs/REGISTRO_EXPERIMENTOS.md`, copy its database to `evaluation/results/`
+with a versioned name so the evidence is committed alongside the log; that
+folder is the archive, `outputs/evaluations.db` is the working copy.
 
 The report covers per-model accuracy with 95% Wilson confidence intervals, the
 per-field failure breakdown, cost and latency per agent, run-to-run stability

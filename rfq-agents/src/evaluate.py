@@ -11,9 +11,15 @@ from uuid import uuid4
 from app_service import PROJECT_ROOT, generate_rfq_from_prompt
 from evaluation.metrics import FieldOutcome, compare_fields
 from evaluation.telemetry import TelemetryStore
-from models.irs_fields import IRSFields
+from llm_client import AgentOutputError
 from proto.proto_mapper import parse_irs_textproto
 from validation.irs_validator import validate_irs
+
+# Etiqueta de producto que se registra cuando un agente responde algo que no
+# cumple su contrato de salida (por ejemplo "IRS." en lugar de "IRS"). La fila
+# cuenta como fallo del caso: el modelo tuvo la informacion y no la devolvio en
+# la forma acordada. Un error de red, en cambio, se excluye del agregado.
+MALFORMED = "MALFORMED"
 
 
 @dataclass(frozen=True)
@@ -93,36 +99,47 @@ def main() -> int:
 
                 started = perf_counter()
                 error = None
+                malformed = None
                 result = None
                 try:
                     result = generate_rfq_from_prompt(
                         prompt_path.read_text(encoding="utf-8"), model_override=model
                     )
                     comparison = compare_fields(result.extracted_fields, expected)
+                except AgentOutputError as exc:
+                    # El modelo respondio, pero fuera de contrato. Es un fallo
+                    # del caso y entra en el agregado con producto MALFORMED.
+                    comparison = compare_fields({}, expected)
+                    malformed = f"{type(exc).__name__}: {exc}"
+                    run_id = exc.run_id
                 except Exception as exc:
+                    # Error de proveedor o de infraestructura: se registra pero
+                    # queda fuera de los agregados.
                     comparison = compare_fields({}, expected)
                     error = f"{type(exc).__name__}: {exc}"
                     failures += 1
+                    run_id = None
+                else:
+                    run_id = result.run_id
                 elapsed = (perf_counter() - started) * 1000
 
+                product_type = (result.product_type if result
+                                else MALFORMED if malformed else None)
+                validation_status = result.validation_status if result else None
                 store.record_evaluation(
                     evaluation_id=str(uuid4()),
-                    run_id=result.run_id if result else None,
+                    run_id=run_id,
                     model=model, provider="openai", case_name=case_name,
                     family=family, batch_id=batch_id,
                     repetition=repetition, topology="pipeline",
-                    product_type=result.product_type if result else None,
+                    product_type=product_type,
                     expected_product_type=golden.product_type,
                     expected_status=golden.status,
-                    product_correct=int(
-                        result is not None and result.product_type == golden.product_type
-                    ),
+                    product_correct=int(product_type == golden.product_type),
                     # Acierto = coincide con lo esperado. Rechazar bien un caso
                     # incompleto es un acierto; contarlo como fallo hacia que la
                     # tasa de validacion no pudiera llegar al 100% por diseno.
-                    validation_correct=int(
-                        result is not None and result.validation_status == golden.status
-                    ),
+                    validation_correct=int(validation_status == golden.status),
                     matched_fields=comparison.matched,
                     total_fields=comparison.total,
                     field_accuracy=comparison.accuracy,
@@ -135,14 +152,19 @@ def main() -> int:
                     hallucinated_count=comparison.count(FieldOutcome.HALLUCINATED),
                     proto_agent_status=result.proto_agent.status if result else None,
                     elapsed_ms=elapsed,
-                    cost_usd=run_cost(store, result.run_id) if result else None,
+                    cost_usd=run_cost(store, run_id) if run_id else None,
                     output_path=result.output_file_path if result else None,
                     error_text=error,
                 )
                 # Una fila con error de API se registra pero queda fuera de los
                 # agregados: un timeout de red no es "el modelo se dejo los
-                # diez campos".
-                detail = f"EXCLUIDA {error[:21]}" if error else comparison.summary()
+                # dieciseis campos". Una salida fuera de contrato si cuenta.
+                if error:
+                    detail = f"EXCLUIDA {error[:21]}"
+                elif malformed:
+                    detail = f"MALFORMED {malformed[:20]}"
+                else:
+                    detail = comparison.summary()
                 if result and result.proto_agent.status not in ("MATCH", "NOT_RUN"):
                     detail += f"  proto:{result.proto_agent.status}"
                 print(f"{model:<16} {family:<14} {case_name:<22} {repetition:>3}  "

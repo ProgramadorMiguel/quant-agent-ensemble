@@ -42,13 +42,22 @@ def load_prices(project_root: Path) -> dict[str, ModelPrice]:
 
 
 def cost_of(
-    project_root: Path, model: str, input_tokens: int | None, output_tokens: int | None
+    project_root: Path,
+    model: str,
+    input_tokens: int | None,
+    output_tokens: int | None,
+    cached_input_tokens: int | None = None,
 ) -> float | None:
-    """None when the model has no price declared: never guess a cost."""
+    """None when the model has no price declared: never guess a cost.
+
+    ``cached_input_tokens`` is the part of ``input_tokens`` served from the
+    provider's prompt cache and billed at the reduced rate. When the provider
+    does not report it, the whole input is billed at full price.
+    """
     price = load_prices(project_root).get(model)
     if price is None or input_tokens is None or output_tokens is None:
         return None
-    return price.cost_usd(input_tokens, output_tokens)
+    return price.cost_usd(input_tokens, output_tokens, cached_input_tokens or 0)
 
 
 def unverified_models(project_root: Path) -> list[str]:
