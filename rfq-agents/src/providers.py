@@ -7,8 +7,11 @@ con otras claves. Aqui se normaliza todo eso a una sola forma, de modo que el
 resto del sistema no sabe con quien habla.
 
 La temperatura se trata como algo que el proveedor puede rechazar, no como algo
-que siempre se pueda fijar: la generacion actual de modelos de OpenAI solo acepta
-su valor por omision, y eso deja de ser un eje de experimentacion.
+que siempre se pueda fijar. Ninguna de las dos generaciones actuales la expone: los
+modelos de OpenAI devuelven 400 ante cualquier valor distinto del suyo por
+omision, y el SDK de Anthropic no admite siquiera el parametro. La consecuencia
+para el trabajo es que la temperatura deja de ser un eje de experimentacion, y la
+reproducibilidad de una tanda no se puede apoyar en fijarla.
 """
 
 from __future__ import annotations
@@ -101,16 +104,19 @@ class AnthropicProvider:
 
     def complete(self, model: str, system: str, user: str,
                  temperature: float | None) -> Completion:
-        kwargs = {}
+        # El SDK actual no admite el parametro: lo rechaza en Python, antes de
+        # llegar a la API. Se senala como rechazo para que el cliente reintente
+        # sin el, con el mismo mecanismo que usa cuando lo rechaza OpenAI.
         if temperature is not None:
-            kwargs["temperature"] = temperature
+            raise TemperatureRejected(
+                "the Anthropic SDK does not accept a temperature parameter"
+            )
         # El prompt de sistema va en su propio parametro, no como primer mensaje.
         response = self._client.messages.create(
             model=model,
             max_tokens=MAX_OUTPUT_TOKENS,
             system=system,
             messages=[{"role": "user", "content": user}],
-            **kwargs,
         )
         # La respuesta es una lista de bloques; solo interesan los de texto.
         text = "".join(block.text for block in response.content

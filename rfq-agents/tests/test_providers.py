@@ -115,7 +115,21 @@ def test_anthropic_gets_the_system_prompt_in_its_own_parameter():
     assert captured["system"] == "las instrucciones"
     assert captured["messages"] == [{"role": "user", "content": "la peticion"}]
     assert captured["max_tokens"] > 0    # Anthropic lo exige
-    assert "temperature" not in captured  # no se envia si no se pide
+    assert "temperature" not in captured
+
+
+def test_anthropic_reports_the_temperature_as_rejected():
+    """El SDK no admite el parametro, asi que se senala como rechazo.
+
+    Reutilizar TemperatureRejected permite que el cliente reintente sin el con el
+    mismo mecanismo que usa cuando lo rechaza OpenAI, en lugar de tener una rama
+    distinta por proveedor.
+    """
+    provider = AnthropicProvider.__new__(AnthropicProvider)
+    provider._client = _Stub(messages=_Stub(
+        create=lambda **kwargs: pytest.fail("no deberia llegar a llamar")))
+    with pytest.raises(TemperatureRejected):
+        provider.complete("claude-sonnet-5", "s", "u", 0)
 
 
 def test_anthropic_joins_only_the_text_blocks():
@@ -190,3 +204,20 @@ def test_the_temperature_is_not_sent_when_it_is_not_requested():
     provider._client = _Stub(chat=_Stub(completions=_Stub(create=create)))
     provider.complete("gpt-5.6-luna", "s", "u", None)
     assert "temperature" not in captured
+
+
+def test_overriding_the_model_keeps_every_credential():
+    """Sobreescribir el modelo no debe perder la clave del otro proveedor.
+
+    Construir un Settings nuevo enumerando campos descartaba los que no se
+    nombraban, y con ellos la clave de Anthropic: pedir un modelo de Claude
+    fallaba por credencial ausente aunque estuviese configurada.
+    """
+    from dataclasses import replace
+
+    settings = Settings(openai_api_key="sk-oai", llm_model="gpt-5.6-terra",
+                        anthropic_api_key="sk-ant")
+    overridden = replace(settings, llm_model="claude-sonnet-5")
+    assert overridden.llm_model == "claude-sonnet-5"
+    assert overridden.key_for("anthropic") == "sk-ant"
+    assert overridden.key_for("openai") == "sk-oai"

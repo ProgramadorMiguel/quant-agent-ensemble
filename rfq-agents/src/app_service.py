@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -117,7 +117,10 @@ def generate_rfq_from_prompt(
     run_id = uuid4().hex
     settings = get_settings()
     if model_override:
-        settings = Settings(settings.openai_api_key, model_override)
+        # replace y no un Settings nuevo: construirlo a mano descartaba los
+        # campos que no se enumeraban, y con ellos la clave de Anthropic, de modo
+        # que --models claude-... fallaba aunque la clave estuviese puesta.
+        settings = replace(settings, llm_model=model_override)
     client = LLMClient(settings, PROJECT_ROOT, run_id, temperature=temperature)
     limit = max_iterations or client.config.max_iterations
 
