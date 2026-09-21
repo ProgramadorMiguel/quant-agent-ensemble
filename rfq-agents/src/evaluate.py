@@ -83,8 +83,8 @@ def main() -> int:
     args = parser.parse_args()
 
     store = TelemetryStore(PROJECT_ROOT / "outputs/evaluations.db")
-    # rglob para recorrer las subcarpetas de familia: completos, incompletos,
-    # jerga y no_soportados. La familia es el nombre de la carpeta.
+    # rglob para recorrer las subcarpetas de familia: cotizacion, valoracion,
+    # jerga, no_valorables y no_soportados. La familia es el nombre de la carpeta.
     prompt_files = sorted(args.cases.rglob("*.prompt.txt"))
     if not prompt_files:
         print(f"No cases found in {args.cases}")

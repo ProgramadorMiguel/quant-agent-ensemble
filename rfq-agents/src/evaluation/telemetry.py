@@ -64,9 +64,9 @@ ADDED_COLUMNS = {
         # de "rechazo correcto": un caso incompleto DEBE salir INVALID.
         "expected_status": "TEXT",          # VALID / INVALID / NOT_RUN
         "expected_product_type": "TEXT",    # IRS / UNSUPPORTED
-        # Familia del caso: completos, incompletos, jerga, no_soportados. Un
-        # porcentaje global mezcla las tres y no dice nada; separadas, cada
-        # familia responde a una pregunta distinta.
+        # Familia del caso: cotizacion, valoracion, jerga, no_valorables o
+        # no_soportados. Un porcentaje global las mezcla y no dice nada;
+        # separadas, cada familia responde a una pregunta distinta.
         "family": "TEXT",
         # Identificador de la tanda a la que pertenece la fila.
         #

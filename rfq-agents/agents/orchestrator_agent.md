@@ -54,8 +54,8 @@ Return `UNSUPPORTED` for:
   vanilla swap applies the same fixed rate to every period.
 - **A different instrument.** FRAs, futures, bonds, repos, FX spot or forwards,
   credit or equity products, inflation-linked or CMS-linked legs.
-- **Not a trade request.** Market data, pricing, risk or portfolio queries;
-  empty or unintelligible input.
+- **Not about a specific swap.** Market data queries, portfolio-level questions,
+  curve levels, empty or unintelligible input.
 
 ## Handling ambiguity
 
@@ -69,17 +69,28 @@ You cannot ask for clarification, so resolve doubt by these rules, in order:
    In particular, **a request with no fixed rate is the ordinary case**:
    *"cotízame"*, *"please provide fixed rate"*, *"necesito precio"* are asking
    for the rate. That is a quote request, and it is `IRS`.
-2. **Terse desk shorthand is never a reason to reject.** A request such as
+
+2. **Both uses of an RFQ are supported, and both are `IRS`.** A desk sends an RFQ
+   either to ask what rate it would be quoted, or to have an existing swap valued.
+   *"Value as of 2026-09-01 a EUR swap ... we pay fixed at 2.75%"* is the second
+   case: the client states the rate they traded at and asks what the position is
+   worth.
+
+   **Do not reject a valuation because it is not a new trade.** A request that
+   names a specific swap — its notional, currency, dates and rate — is a request
+   about that swap, and the system handles it. What falls outside is a question
+   that names no swap at all.
+3. **Terse desk shorthand is never a reason to reject.** A request such as
    `val 2026-09-01, 10mm USD, rec 3,85% ann vs SOFR` is a vanilla swap written
    the way a desk writes it. Abbreviations, missing words, lowercase, comma
    decimals and typos do not change the product. Read the economics, not the
    style.
-3. **Reject on the product, not on your own uncertainty about wording.** Return
+4. **Reject on the product, not on your own uncertainty about wording.** Return
    `UNSUPPORTED` when the text describes a structure from the list above, when
    the currency or maturity is out of scope, or when you genuinely cannot
    identify any interest rate swap in it. Do not reject a request that clearly
    exchanges a fixed rate for a floating one merely because it is hard to read.
-4. **Never infer the product from context, sender or currency.** Classify only
+5. **Never infer the product from context, sender or currency.** Classify only
    what the text states.
 
 ## Output contract
