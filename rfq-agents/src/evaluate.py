@@ -13,6 +13,7 @@ from evaluation.metrics import FieldOutcome, compare_fields
 from evaluation.telemetry import TelemetryStore
 from llm_client import AgentOutputError
 from proto.proto_mapper import parse_irs_textproto
+from providers import provider_for
 from validation.irs_validator import validate_irs, with_defaults
 
 # Etiqueta de producto que se registra cuando un agente responde algo que no
@@ -147,7 +148,7 @@ def main() -> int:
                 store.record_evaluation(
                     evaluation_id=str(uuid4()),
                     run_id=run_id,
-                    model=model, provider="openai", case_name=case_name,
+                    model=model, provider=provider_for(model), case_name=case_name,
                     family=family, batch_id=batch_id,
                     iterations=result.iterations if result else None,
                     temperature=args.temperature, as_of=args.as_of.isoformat(),

@@ -4,13 +4,12 @@ from hashlib import sha256
 from pathlib import Path
 from time import perf_counter
 
-from openai import BadRequestError, OpenAI
-
 from agent_config import AgentsConfig, load_agents_config
 from evaluation.costs import cost_of
 from evaluation.telemetry import TelemetryStore
 from models.irs_fields import IRSFields
 from proto.proto_mapper import parse_irs_textproto
+from providers import TemperatureRejected, build_provider, provider_for
 from settings import Settings
 
 
@@ -30,14 +29,6 @@ class AgentOutputError(RuntimeError):
         self.run_id = run_id
 
 
-def _cached_tokens(usage) -> int | None:
-    """Tokens de entrada servidos desde la cache de prompt, si el proveedor lo informa."""
-    details = getattr(usage, "prompt_tokens_details", None)
-    if details is None:
-        return None
-    return getattr(details, "cached_tokens", None)
-
-
 class LLMClient:
     """Executes the agent pipeline declared in config/agents.yaml."""
 
@@ -49,11 +40,14 @@ class LLMClient:
         config: AgentsConfig | None = None,
         temperature: float | None = None,
     ):
-        self.client = OpenAI(api_key=settings.openai_api_key)
         self.project_root = project_root
         self.run_id = run_id
         self.config = config or load_agents_config(project_root)
         self.model = settings.llm_model or self.config.model
+        # El proveedor se deduce del nombre del modelo, de modo que comparar
+        # OpenAI con Anthropic no exige tocar nada mas que --models.
+        self.provider = provider_for(self.model)
+        self.client = build_provider(self.model, settings)
         # La temperatura se puede sobreescribir por ejecucion para barrerla como
         # parametro de experimento sin editar el fichero de configuracion, que
         # dejaria la tanda sin rastro de con que valor se midio.
@@ -67,32 +61,25 @@ class LLMClient:
     def _system_prompt(self, agent: str) -> str:
         return self.config.spec(agent).system_prompt(self.project_root)
 
-    def _create(self, system: str, user: str):
+    def _complete(self, system: str, user: str):
         """Llamada al proveedor, omitiendo la temperatura si el modelo la rechaza.
 
-        La generacion actual de modelos no expone el parametro: acepta solo su
-        valor por omision y devuelve 400 ante cualquier otro. Se detecta el
-        rechazo y se reintenta sin el, anotandolo, en lugar de mantener una lista
-        de modelos que quedaria obsoleta con cada lanzamiento.
+        La generacion actual de modelos de OpenAI no expone ese parametro: acepta
+        solo su valor por omision y devuelve 400 ante cualquier otro. Se detecta
+        el rechazo y se reintenta sin el, en lugar de mantener una lista de
+        modelos que quedaria obsoleta con cada lanzamiento.
 
-        La consecuencia para los experimentos es real y hay que declararla: en
-        esos modelos la temperatura no es un eje que se pueda barrer.
+        La consecuencia para los experimentos hay que declararla: en esos modelos
+        la temperatura no es un eje que se pueda barrer.
         """
-        messages = [{"role": "system", "content": system},
-                    {"role": "user", "content": user}]
         if self.temperature_supported:
             try:
-                return self.client.chat.completions.create(
-                    model=self.model, messages=messages,
-                    temperature=self.temperature,
+                return self.client.complete(
+                    self.model, system, user, self.temperature
                 )
-            except BadRequestError as exc:
-                if "temperature" not in str(exc):
-                    raise
+            except TemperatureRejected:
                 self.temperature_supported = False
-        return self.client.chat.completions.create(
-            model=self.model, messages=messages
-        )
+        return self.client.complete(self.model, system, user, None)
 
     def _call(self, agent: str, user: str) -> str:
         system = self._system_prompt(agent)
@@ -101,36 +88,28 @@ class LLMClient:
         prompt_hash = sha256(system.encode("utf-8")).hexdigest()[:12]
         started = perf_counter()
         try:
-            response = self._create(system, user)
-            content = response.choices[0].message.content
-            if not content:
-                raise RuntimeError("OpenAI returned an empty response")
-            usage = response.usage
-            input_tokens = getattr(usage, "prompt_tokens", None)
-            output_tokens = getattr(usage, "completion_tokens", None)
-            # OpenAI cachea automaticamente los prefijos de prompt largos y los
-            # factura a tarifa reducida. El prompt de sistema del especialista
-            # (instrucciones + skill + esquema) supera ese umbral, asi que sin
-            # este dato el coste calculado sobreestima la factura real.
-            cached_tokens = _cached_tokens(usage)
+            completion = self._complete(system, user)
             self.telemetry.record_call(
                 run_id=self.run_id, agent=agent, model=self.model,
                 latency_ms=(perf_counter() - started) * 1000, status="SUCCESS",
-                request_text=user, response_text=content,
-                input_tokens=input_tokens, output_tokens=output_tokens,
-                total_tokens=getattr(usage, "total_tokens", None),
-                provider="openai", prompt_hash=prompt_hash,
-                cached_input_tokens=cached_tokens,
-                cost_usd=cost_of(self.project_root, self.model, input_tokens,
-                                 output_tokens, cached_tokens),
+                request_text=user, response_text=completion.text,
+                input_tokens=completion.input_tokens,
+                output_tokens=completion.output_tokens,
+                total_tokens=completion.total_tokens,
+                provider=self.provider, prompt_hash=prompt_hash,
+                cached_input_tokens=completion.cached_input_tokens,
+                cost_usd=cost_of(self.project_root, self.model,
+                                 completion.input_tokens,
+                                 completion.output_tokens,
+                                 completion.cached_input_tokens),
             )
-            return content.strip()
+            return completion.text
         except Exception as exc:
             self.telemetry.record_call(
                 run_id=self.run_id, agent=agent, model=self.model,
                 latency_ms=(perf_counter() - started) * 1000, status="ERROR",
                 request_text=user, error_text=f"{type(exc).__name__}: {exc}",
-                provider="openai", prompt_hash=prompt_hash,
+                provider=self.provider, prompt_hash=prompt_hash,
             )
             raise
 
