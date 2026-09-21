@@ -793,7 +793,173 @@ y no admite duda.
 
 ---
 
-## Tanda 9 — Pendiente
+## Tandas 12, 13 y 14 — Instrucción corregida: el resultado definitivo
+
+| | |
+|---|---|
+| **Identificadores** | `20260921T121841Z` (luna), `20260921T122121Z` (terra), `20260921T122435Z` (sol) |
+| **Casos** | 23, idénticos a las tandas anteriores |
+| **Cambio** | La instrucción del orquestador ya no declara fuera de alcance las peticiones de valoración |
+| **Repeticiones** | 1 |
+
+Tercera medición de los mismos tres modelos sobre los mismos casos. Es la
+**condición B**: idéntica a las anteriores salvo la instrucción corregida.
+
+### Resultado
+
+| Modelo | Producto | Validación | RFQ exacta | Campos | Coste/pasada | Coste/caso |
+|---|---|---|---|---|---|---|
+| `luna` | 22/23 (95,7 %) | 22/23 | **18/23 (78,3 %)** | 93,2 % | **0,0278 $** | **0,0013 $** |
+| `terra` | **23/23 (100 %)** | **23/23** | **23/23 (100 %)** | **100 %** | 0,2353 $ | 0,0102 $ |
+| `sol` | **23/23 (100 %)** | **23/23** | **23/23 (100 %)** | **100 %** | 0,4178 $ | 0,0182 $ |
+
+### Hallazgo principal: la literalidad es una propiedad del modelo, y se paga
+
+`gpt-5.6-sol` pasa de **19/23 (82,6 %) a 23/23 (100 %)** sin cambiar de modelo, de
+temperatura ni de casos. El único cambio es una frase de la instrucción del
+orquestador.
+
+Las cuatro valoraciones que rechazaba —`eur_no_estandar_3m`, `eur_payer_5y`,
+`eur_periodo_roto`, `eur_receiver_1y`— pasan las cuatro. La causa queda
+establecida: la instrucción enumeraba entre los motivos de rechazo las consultas
+de *pricing* que no fuesen una operación nueva, y una valoración es exactamente
+eso. **La instrucción contradecía al esquema**, que soporta ese uso desde que
+`RFQPurpose` distingue cotización de valoración.
+
+`sol` la aplicó al pie de la letra. `luna` y `terra` la ignoraron y acertaron por
+no hacer caso.
+
+**Esto reordena la lectura de las tandas anteriores.** El aparente mal rendimiento
+del modelo más caro no medía capacidad: medía **fidelidad a una instrucción
+defectuosa**. Un evaluador que se hubiese detenido en la condición A habría
+concluido que `sol` es peor para la tarea, cuando lo que ocurría es que era el
+único que leía bien lo que se le pedía.
+
+La consecuencia práctica invierte el signo de la advertencia habitual: **un modelo
+más literal no tolera una especificación imprecisa.** Con instrucciones exactas
+rinde al máximo; con instrucciones contradictorias es el primero en romperse,
+porque no las suple con sentido común. Elegir un modelo más capaz obliga a
+escribir mejor la instrucción, no permite descuidarla.
+
+### `luna`: barato, y ahí se nota
+
+`luna` es el único que no alcanza el 100 %, y sus fallos son de dos clases.
+
+**Un falso positivo sistemático.** Aceptó `eur_contra_sofr` —un *swap* en euros
+contra SOFR, producto de dos divisas— en las **tres** tandas. No es ruido: es una
+frontera de producto que ese modelo no traza.
+
+**Aritmética de fechas inestable.** La exactitud de RFQ cae a lo largo de las tres
+condiciones aunque la clasificación de producto se mantenga:
+
+| Condición | RFQ exacta de `luna` |
+|---|---|
+| A, primera | 95,5 % |
+| A, segunda | 87,0 % |
+| B | **78,3 %** |
+
+Los fallos se concentran en `floating_leg.payment_dates`, cuatro de diecinueve
+ejecuciones, y aparecen sobre todo en los casos que exigen resolver *spot* o la
+estructura diferida `2Y1Y`, donde `forward_start_2y1y` cayó a 16/20. Los otros dos
+modelos no fallan ninguno.
+
+Como la clasificación de producto se mantiene estable en 22/23, la degradación no
+se explica por variabilidad de la tanda: es el cálculo del calendario lo que ese
+modelo no sostiene. **Construir veinte fechas encadenadas a partir de una
+expresión relativa es la tarea que separa al modelo barato de los otros dos.**
+
+### `terra` y `sol` son indistinguibles en acierto, y `terra` cuesta la mitad
+
+Ambos firman 23/23 en las cuatro métricas, sin un solo fallo de campo. El McNemar
+entre ellos registra **cero pares discordantes**: sobre esta batería no hay
+diferencia observable.
+
+| | `terra` | `sol` |
+|---|---|---|
+| Coste por pasada | 0,2353 $ | 0,4178 $ |
+| Coste por caso válido | 0,0102 $ | 0,0182 $ |
+| Latencia mediana | 9.011 ms | 11.029 ms |
+
+`sol` cuesta **un 78 % más** y tarda un 22 % más para un resultado idéntico.
+
+**La recomendación es `terra`.** No por acertar más, sino porque acierta lo mismo
+por la mitad. Y `luna` sigue siendo defendible cuando el coste manda: a 0,0013 $
+por caso es veinte veces más barato que `terra`, a cambio de una frontera de
+producto mal trazada y un calendario poco fiable.
+
+### Fidelidad de serialización: 100 % en los tres modelos y en las tres tandas
+
+| Modelo | Coincidencia con el mapeador |
+|---|---|
+| `luna` | 16/16 |
+| `terra` | 15/15 |
+| `sol` | 15/15 |
+
+Nueve mediciones, tres modelos, tres tandas: **coincidencia byte a byte siempre.**
+La pregunta queda cerrada sin matices. Un modelo de lenguaje serializa protobuf
+contra un esquema con submensajes anidados y hasta cuarenta campos repetidos con
+fidelidad total, y lo hace incluso el más barato.
+
+Conservar ese agente no es, por tanto, una cuestión de capacidad sino de coste:
+consume entre el 39 % y el 44 % del presupuesto de cada pasada para reproducir lo
+que una función determinista de cuarenta líneas produce en microsegundos y sin
+coste. El trabajo lo mantiene como instrumento de medida, no como pieza del flujo.
+
+### El bucle de autocorrección apenas se usa, y eso también es un resultado
+
+| Modelo | A la primera | Tras dos pasadas |
+|---|---|---|
+| `luna` | 22 | 1 |
+| `terra` | 23 | 0 |
+| `sol` | 23 | 0 |
+
+Con la instrucción corregida, **el bucle no rescata ningún caso**: la única
+ejecución que lo activó fue el falso positivo de `luna`, y no logró corregirlo
+porque el error estaba en la clasificación de producto y el bucle solo reintenta la
+extracción.
+
+Es la conclusión honesta sobre ese mecanismo: **cuando la instrucción es precisa,
+el bucle no aporta.** Su valor se manifestó con instrucciones ambiguas, donde
+rescató tres casos en la condición A. Un sistema con especificación cuidada paga
+latencia por un mecanismo que no llega a ejercitar, y esa es la disyuntiva que hay
+que declarar.
+
+### Contraste estadístico
+
+Sin potencia en ningún par: uno, uno y cero pares discordantes frente a los seis
+que exige el binomial exacto. Los intervalos de Wilson —[79 %, 99 %] para `luna`,
+[86 %, 100 %] para `terra` y `sol`— se solapan.
+
+**No debe redactarse como empate.** Con veintitrés casos y una repetición la
+comparación de acierto no tiene resolución; la de coste, que difiere en un factor
+de veinte entre `luna` y `sol`, sí es concluyente.
+
+### Resumen de las tres condiciones
+
+| Modelo | A, primera | A, segunda | B |
+|---|---|---|---|
+| `luna` | 21/22 | 22/23 | 22/23 |
+| `terra` | 21/21 | 23/23 | **23/23** |
+| `sol` | 19/22 | 19/23 | **23/23** |
+
+`terra` firma tres tandas sin un fallo. `luna` repite su falso positivo tres veces.
+`sol` se recupera por completo al corregir la instrucción.
+
+### Limitaciones
+
+- **Una repetición por condición.** La estabilidad se infiere de la coincidencia
+  entre las tres tandas, no de repeticiones dentro de una.
+- **Veintitrés casos**, once propuestos por el tutor y doce por el autor del
+  sistema. La comparación entre modelos usa los mismos casos y es válida; el nivel
+  absoluto está afectado por el sesgo de autoría.
+- **La temperatura no es un eje.** Estos modelos solo aceptan su valor por
+  omisión, de modo que la variabilidad observada entre tandas es irreducible.
+- **El coste de `sol` es promocional** hasta el 21 de noviembre de 2026.
+- **Un solo proveedor.** Anthropic no está soportado por el cliente.
+
+---
+
+## Pendiente
 
 Relanzar las tres tandas con el defecto de `_check_schedules` corregido, para que
 `terra` complete los 23 casos. Después: repeticiones para medir variabilidad, y
