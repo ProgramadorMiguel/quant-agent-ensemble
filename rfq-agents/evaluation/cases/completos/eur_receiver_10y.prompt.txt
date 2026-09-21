@@ -1,0 +1,2 @@
+Please value as of 2026-10-01 an EUR interest rate swap of EUR 25,000,000
+running from 2026-10-01 to 2036-10-01. The client receives fixed at 3.10%.

@@ -40,6 +40,10 @@ class AgentsConfig:
     temperature: float
     agents: dict[str, AgentSpec]
     pipeline: tuple[str, ...]
+    # Pasadas maximas del bucle de autocorreccion. Es una cota, no una condicion
+    # de exito: al agotarla el sistema devuelve error. Vive en el fichero de
+    # configuracion y no en el codigo para que sea un parametro de experimento.
+    max_iterations: int = 5
 
     def spec(self, key: str) -> AgentSpec:
         try:
@@ -87,9 +91,14 @@ def load_agents_config(
                     f"Agent {spec.key!r} references a missing file: {relative}"
                 )
 
+    max_iterations = int((raw.get("loop") or {}).get("max_iterations", 5))
+    if max_iterations < 1:
+        raise RuntimeError("loop.max_iterations must be at least 1")
+
     return AgentsConfig(
         model=raw.get("model", "gpt-4.1-mini"),
         temperature=float((raw.get("sampling") or {}).get("temperature", 0)),
         agents=agents,
         pipeline=pipeline,
+        max_iterations=max_iterations,
     )

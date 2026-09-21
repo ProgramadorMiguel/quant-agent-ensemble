@@ -13,6 +13,9 @@ syntax = "proto3";
 // forecast_curve reproducen los argumentos de la clase Swap del Codigo 2.11
 // (pag. 63) para que la RFQ sea consumible por ese valorador sin traduccion.
 //
+// Alcance: EUR y USD, vencimientos de un ano o superiores. Las convenciones de
+// cada divisa estan documentadas y verificadas en docs/CONVENCIONES_MERCADO.md.
+//
 // Simplificaciones, las mismas que adopta el libro en la pag. 63: las fechas de
 // devengo coinciden con las del indice, no hay fechas de fijacion separadas y no
 // se modela calendario de dias festivos.
@@ -22,6 +25,21 @@ package pricing;
 message RFQ {
   string rfq_id = 1;
   InterestRateSwap irs = 2;
+}
+
+// Naturaleza del tipo que paga la pata flotante.
+//
+// La distincion no es cosmetica: separa dos estructuras de producto distintas.
+// Un swap contra IBOR fija el tipo una vez por periodo a partir de un indice con
+// plazo (EURIBOR 6M); un swap contra un tipo a un dia capitaliza las fijaciones
+// diarias a lo largo del periodo y no tiene plazo de fijacion. Tras el cese del
+// LIBOR en junio de 2023, el swap vanilla en dolares es de la segunda clase.
+enum FloatingRateType {
+  FLOATING_RATE_TYPE_UNSPECIFIED = 0;
+  // Indice con plazo de fijacion, una fijacion por periodo. EURIBOR.
+  IBOR = 1;
+  // Tipo a un dia capitalizado sobre el periodo. SOFR, ESTR, SONIA.
+  OVERNIGHT_COMPOUNDED = 2;
 }
 
 message InterestRateSwap {
@@ -40,17 +58,18 @@ message InterestRateSwap {
   optional string effective_date = 5;
   optional string maturity_date = 6;
 
-  // Marco de doble curva de la seccion 2.4.6.2: P_disc descuenta los flujos y
-  // L_est proyecta las fijaciones de la pata flotante.
+  // Curva con la que se descuentan los flujos de las dos patas: la P_disc de la
+  // seccion 2.4.6.2. La curva de estimacion no vive aqui, sino dentro de la pata
+  // flotante, porque solo proyecta las fijaciones de esa pata.
   optional string discount_curve = 7;
-  optional string forecast_curve = 8;
 
-  FixedLeg fixed_leg = 9;
-  FloatingLeg floating_leg = 10;
+  FixedLeg fixed_leg = 8;
+  FloatingLeg floating_leg = 9;
 }
 
 message FixedLeg {
-  // Tipo fijo k de la ecuacion 2.38, en tanto por uno.
+  // Tipo fijo k de la ecuacion 2.38, en tanto por uno. El mismo para todos los
+  // periodos: no se contemplan tipos escalonados.
   optional double rate = 1;
 
   // Base de calculo con la que se obtiene la fraccion de ano tau_i.
@@ -58,23 +77,35 @@ message FixedLeg {
   optional string payment_frequency = 3;
 
   // Calendario de pagos de la pata: el vector fixedLegDates de la clase Swap.
-  // Lo genera el codigo a partir de las fechas y la frecuencia; no lo extrae
-  // ningun agente.
+  // Se declara explicitamente y no se deriva de (inicio, vencimiento,
+  // frecuencia), porque con periodos rotos esa derivacion no es posible: un
+  // tramo inicial o final mas corto que los demas no queda determinado por la
+  // frecuencia.
   repeated string payment_dates = 4;
 }
 
 message FloatingLeg {
-  // Indice de referencia y su plazo de fijacion. Determinan que curva de
-  // estimacion proyecta los tipos forward de la ecuacion 2.32.
-  optional string index = 1;
-  optional string tenor = 2;
+  // Naturaleza del tipo flotante. Determina si tenor tiene sentido.
+  optional FloatingRateType rate_type = 1;
+
+  // Indice de referencia: EURIBOR, SOFR, ESTR.
+  optional string index = 2;
+
+  // Plazo de fijacion del indice. Solo aplica cuando rate_type es IBOR; en un
+  // tipo a un dia capitalizado no existe plazo de fijacion y el campo se omite.
+  optional string tenor = 3;
 
   // Diferencial sobre el indice, el spread de la ecuacion 2.52.
-  optional double spread = 3;
+  optional double spread = 4;
 
-  optional string day_count = 4;
-  optional string payment_frequency = 5;
+  optional string day_count = 5;
+  optional string payment_frequency = 6;
 
-  // Vector floatingLegDates de la clase Swap. Generado por el codigo.
-  repeated string payment_dates = 6;
+  // Curva que proyecta las fijaciones de esta pata: la L_est de la ecuacion
+  // 2.46. Vive dentro de la pata porque solo concierne a la pata flotante.
+  optional string forecast_curve = 7;
+
+  // Vector floatingLegDates de la clase Swap. Explicito por el mismo motivo que
+  // el de la pata fija.
+  repeated string payment_dates = 8;
 }

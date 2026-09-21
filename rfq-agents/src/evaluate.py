@@ -131,6 +131,7 @@ def main() -> int:
                     run_id=run_id,
                     model=model, provider="openai", case_name=case_name,
                     family=family, batch_id=batch_id,
+                    iterations=result.iterations if result else None,
                     repetition=repetition, topology="pipeline",
                     product_type=product_type,
                     expected_product_type=golden.product_type,
@@ -165,6 +166,8 @@ def main() -> int:
                     detail = f"MALFORMED {malformed[:20]}"
                 else:
                     detail = comparison.summary()
+                if result and result.iterations > 1:
+                    detail += f"  iter:{result.iterations}"
                 if result and result.proto_agent.status not in ("MATCH", "NOT_RUN"):
                     detail += f"  proto:{result.proto_agent.status}"
                 print(f"{model:<16} {family:<14} {case_name:<22} {repetition:>3}  "

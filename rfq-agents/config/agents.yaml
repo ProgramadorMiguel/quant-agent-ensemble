@@ -23,6 +23,17 @@ model: gpt-4.1-mini
 sampling:
   temperature: 0
 
+# Bucle de autocorrección. Cuando la validación determinista detecta un error
+# atribuible al modelo (una convención que no corresponde a la divisa, un
+# calendario incoherente, una fecha imposible), el diagnóstico se devuelve al
+# agente y se reintenta. Es una cota, no una condición de éxito: al agotar las
+# pasadas el sistema devuelve error.
+#
+# No se reintenta cuando lo que falta es un término que la petición nunca
+# enunció: esa información no existe y ninguna pasada adicional la va a producir.
+loop:
+  max_iterations: 5
+
 agents:
 
   orchestrator:

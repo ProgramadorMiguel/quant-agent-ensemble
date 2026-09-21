@@ -1,6 +1,6 @@
 notional: 5000000
 currency: "EUR"
-is_fixed_rate_receiver: false
+valuation_date: "2026-09-01"
 effective_date: "2026-09-01"
 maturity_date: "2031-09-01"
 discount_curve: "EUR-ESTR"

@@ -1,2 +1,0 @@
-valn dt 2026-09-01. EUR 250k, 2026-09-01 / 2028-09-01. rec fixed 2,05 pct ann
-act/365 vs 6s semi act/360. disc EUR-ESTR fwd EUR-EURIBOR-6M

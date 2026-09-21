@@ -1,3 +1,0 @@
-Value as of 2026-09-01 an EUR interest rate swap of EUR 12,000,000 running from
-2026-09-01 to 2033-09-01. The client receives fixed at 3.10% annually on
-30/360 and pays 6M EURIBOR semiannually on ACT/360.

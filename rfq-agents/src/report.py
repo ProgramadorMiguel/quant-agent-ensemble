@@ -123,6 +123,37 @@ def report_families(store: TelemetryStore, batch_id: str | None = None) -> None:
     print("  se promedian entre si. El agregado global esta arriba.")
 
 
+def report_loop(store: TelemetryStore, batch_id: str | None = None) -> None:
+    """Cuanto aporta el bucle de autocorreccion.
+
+    Si casi todo se resuelve en la primera pasada, el bucle cuesta latencia y no
+    compensa; si hay casos que solo salen al segundo o tercer intento, es el
+    mecanismo que los rescata. Las dos lecturas son publicables, y solo este
+    reparto permite distinguirlas.
+    """
+    clause, params = _batch_filter(batch_id)
+    rows = store.query(f"""
+        SELECT model, iterations, COUNT(*), SUM(validation_correct)
+        FROM evaluation_runs
+        WHERE error_text IS NULL AND iterations IS NOT NULL{clause}
+        GROUP BY model, iterations ORDER BY model, iterations
+    """, params)
+    if not rows:
+        return
+    rule("Pasadas del bucle de autocorreccion")
+    current = None
+    for model, iterations, count, correct in rows:
+        if model != current:
+            print(f"\n{model}")
+            current = model
+        label = ("a la primera" if iterations == 1
+                 else f"tras {iterations} pasadas")
+        print(f"   {label:<22} {count:>3} casos, {correct or 0} con el estado esperado")
+    print("\n  Una pasada significa que la extraccion fue valida sin correccion.")
+    print("  Mas de una, que la validacion determinista detecto un error del modelo")
+    print("  y el diagnostico se le devolvio al agente.")
+
+
 def report_fields(store: TelemetryStore, batch_id: str | None = None) -> None:
     clause, params = _batch_filter(batch_id)
     rows = store.query(
@@ -303,6 +334,7 @@ def main() -> int:
 
     report_models(aggregates)
     report_families(store, batch_id)
+    report_loop(store, batch_id)
     report_operations(aggregates)
     report_fields(store, batch_id)
     report_proto_fidelity(store, batch_id)

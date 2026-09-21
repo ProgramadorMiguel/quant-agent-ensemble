@@ -1,4 +1,2 @@
-RFQ for an EUR interest rate swap, notional EUR 8,000,000, effective
-2026-11-02 and maturing 2031-11-02. We pay fixed at 2.85% annually 30/360 and
-receive 6M EURIBOR semiannually ACT/360. Discount EUR-ESTR, forecast
-EUR-EURIBOR-6M.
+RFQ for an EUR interest rate swap, notional EUR 5,000,000, effective 2026-09-01
+and maturing 2031-09-01. We pay fixed at 2.60%.

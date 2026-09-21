@@ -1,3 +1,0 @@
-Value as of 2026-09-01 an EUR interest rate swap, notional EUR 5,000,000, from
-2026-09-01 to 2031-09-01. We pay fixed at 2.60% annually and receive 6M
-EURIBOR semiannually. Discount on EUR-ESTR, forecast on EUR-EURIBOR-6M.

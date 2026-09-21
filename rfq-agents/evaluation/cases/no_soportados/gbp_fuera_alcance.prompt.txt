@@ -1,0 +1,2 @@
+Value as of 2026-09-01 a GBP interest rate swap, notional GBP 15,000,000,
+effective 2026-09-01, maturing 2028-09-01. The client receives fixed at 4.10%.

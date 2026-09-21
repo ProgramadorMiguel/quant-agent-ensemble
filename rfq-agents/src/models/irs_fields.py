@@ -6,6 +6,12 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict
 
 
+# Naturaleza del tipo flotante. Ver el enum FloatingRateType de pricing.proto.
+IBOR = "IBOR"
+OVERNIGHT_COMPOUNDED = "OVERNIGHT_COMPOUNDED"
+RATE_TYPES = (IBOR, OVERNIGHT_COMPOUNDED)
+
+
 class _Extractable(BaseModel):
     """Base de los modelos de extraccion.
 
@@ -26,27 +32,34 @@ class FixedLegFields(_Extractable):
     rate: Decimal | None = None
     day_count: str | None = None
     payment_frequency: str | None = None
+    payment_dates: list[date] = []
 
 
 class FloatingLegFields(_Extractable):
     """Pata flotante.
 
-    El indice y su plazo de fijacion no son intercambiables: determinan que
-    curva de estimacion proyecta los tipos forward.
+    ``rate_type`` distingue las dos estructuras de producto que el sistema
+    admite. Con ``IBOR`` el tenor es obligatorio, porque identifica el plazo de
+    fijacion del indice; con ``OVERNIGHT_COMPOUNDED`` no existe plazo de fijacion
+    y el tenor debe quedar ausente.
     """
 
+    rate_type: str | None = None
     index: str | None = None
     tenor: str | None = None
     spread: Decimal | None = None
     day_count: str | None = None
     payment_frequency: str | None = None
+    forecast_curve: str | None = None
+    payment_dates: list[date] = []
 
 
 class IRSFields(_Extractable):
     """Terminos de un swap de tipos de interes vanilla, tal como se extraen.
 
     La estructura reproduce la de la clase ``Swap`` del Codigo 2.11 del libro:
-    terminos comunes, dos patas y dos curvas.
+    terminos comunes, dos patas y dos curvas. La curva de estimacion vive dentro
+    de la pata flotante porque solo proyecta las fijaciones de esa pata.
     """
 
     notional: Decimal | None = None
@@ -56,6 +69,5 @@ class IRSFields(_Extractable):
     effective_date: date | None = None
     maturity_date: date | None = None
     discount_curve: str | None = None
-    forecast_curve: str | None = None
     fixed_leg: FixedLegFields = FixedLegFields()
     floating_leg: FloatingLegFields = FloatingLegFields()

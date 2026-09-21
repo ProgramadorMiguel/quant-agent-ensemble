@@ -1,4 +1,0 @@
-Value as of 2026-09-01 an EUR swap with notional EUR 7,500,000 from 2026-09-01
-to 2030-03-01. We pay fixed 2.95% annually 30/360 and receive 6M EURIBOR plus
-a spread of 25bp, paid semiannually on ACT/360. Discount EUR-ESTR, forecast
-EUR-EURIBOR-6M.

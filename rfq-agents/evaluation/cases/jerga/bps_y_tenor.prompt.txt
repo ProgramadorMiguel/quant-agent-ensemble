@@ -1,3 +1,0 @@
-Desk request, valuation 2026-09-01. GBP 30mm, eff 2026-09-01, mat 2036-09-01.
-Client pays fixed 410bp annual on act/365, receives SONIA 3m quarterly
-act/365. Discounting GBP-SONIA, forecasting GBP-SONIA-3M.

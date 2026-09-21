@@ -1,116 +1,232 @@
 from datetime import date
 from decimal import Decimal
 
-from models.irs_fields import FixedLegFields, FloatingLegFields, IRSFields
+from models.irs_fields import (
+    IBOR,
+    OVERNIGHT_COMPOUNDED,
+    FixedLegFields,
+    FloatingLegFields,
+)
 from validation.irs_validator import validate_irs, with_defaults
 
 
-def valid_fields(**overrides) -> IRSFields:
-    data = dict(
-        notional=Decimal("10000000"), currency="EUR",
-        is_fixed_rate_receiver=False,
-        valuation_date=date(2026, 9, 1),
-        effective_date=date(2026, 9, 1), maturity_date=date(2031, 9, 1),
-        discount_curve="EUR-ESTR", forecast_curve="EUR-EURIBOR-6M",
-        fixed_leg=FixedLegFields(
-            rate=Decimal("0.0275"), day_count="30/360", payment_frequency="1Y"
-        ),
-        floating_leg=FloatingLegFields(
-            index="EURIBOR", tenor="6M", spread=Decimal("0"),
-            day_count="ACT/360", payment_frequency="6M",
-        ),
+# --- Casos que deben pasar ------------------------------------------------
+
+def test_eur_standard_convention_is_valid(eur_fields):
+    report = validate_irs(eur_fields)
+    assert report.is_valid, report.errors
+
+
+def test_usd_sofr_ois_is_valid(usd_fields):
+    """Un swap USD es un OIS: sin tenor, ambas patas anuales ACT/360."""
+    report = validate_irs(usd_fields)
+    assert report.is_valid, report.errors
+
+
+# --- Terminos que la peticion no enuncio: se reclaman, no se reintentan ---
+
+def test_missing_mandatory_term_is_reported_and_not_retryable(eur_fields):
+    fields = eur_fields.model_copy(update={"notional": None})
+    report = validate_irs(fields)
+    assert not report.is_valid
+    assert "notional" in report.missing_fields
+    assert "el nocional del swap" in report.clarifications
+    # No se reintenta: la peticion no contiene el dato y ninguna pasada
+    # adicional lo va a producir.
+    assert not report.retryable
+
+
+def test_missing_rate_is_looked_up_inside_the_fixed_leg(eur_fields):
+    fields = eur_fields.model_copy(
+        update={"fixed_leg": eur_fields.fixed_leg.model_copy(update={"rate": None})}
     )
-    data.update(overrides)
-    return IRSFields(**data)
+    report = validate_irs(fields)
+    assert "fixed_leg.rate" in report.missing_fields
 
 
-def test_valid_irs_passes():
-    report = validate_irs(valid_fields())
-    assert report.is_valid
-    assert report.errors == []
-    assert report.missing_fields == []
-    assert report.clarifications == []
+# --- Errores del modelo: se reintentan -----------------------------------
 
-
-def test_missing_terms_are_reported_with_a_request_to_specify():
-    report = validate_irs(valid_fields(
-        discount_curve=None,
-        floating_leg=FloatingLegFields(index="EURIBOR", tenor="6M"),
-    ))
+def test_wrong_eur_tenor_for_the_maturity_is_a_retryable_error(eur_fields):
+    """A cinco anos la convencion EUR es EURIBOR 6M, no 3M."""
+    fields = eur_fields.model_copy(update={
+        "floating_leg": eur_fields.floating_leg.model_copy(
+            update={"tenor": "3M", "forecast_curve": "EUR-EURIBOR-3M"}
+        )
+    })
+    report = validate_irs(fields)
     assert not report.is_valid
-    assert "discount_curve" in report.missing_fields
-    assert "floating_leg.day_count" in report.missing_fields
-    assert "la curva de descuento" in report.clarifications
-    assert "Para poder valorar" in report.to_text()
+    assert report.retryable
+    assert any("floating_leg.tenor" in e for e in report.errors)
 
 
-def test_the_system_never_defaults_a_market_convention():
-    """Una base de calculo ausente se pide, no se rellena con la habitual."""
-    report = validate_irs(valid_fields(
-        fixed_leg=FixedLegFields(rate=Decimal("0.0275"), payment_frequency="1Y")
-    ))
+def test_eur_one_year_uses_the_three_month_convention(eur_fields, dates):
+    """A un ano la convencion EUR cambia: trimestral contra EURIBOR 3M."""
+    _dates = dates
+    start = date(2026, 9, 1)
+    fields = eur_fields.model_copy(update={
+        "maturity_date": date(2027, 9, 1),
+        "fixed_leg": eur_fields.fixed_leg.model_copy(
+            update={"payment_dates": _dates(start, 12, 1)}
+        ),
+        "floating_leg": eur_fields.floating_leg.model_copy(update={
+            "tenor": "3M", "payment_frequency": "3M",
+            "forecast_curve": "EUR-EURIBOR-3M",
+            "payment_dates": _dates(start, 3, 4),
+        }),
+    })
+    report = validate_irs(fields)
+    assert report.is_valid, report.errors
+
+
+def test_a_tenor_on_a_compounded_overnight_leg_is_rejected(usd_fields):
+    """SOFR capitalizado no tiene plazo de fijacion: declararlo describe un
+    producto que no existe."""
+    fields = usd_fields.model_copy(update={
+        "floating_leg": usd_fields.floating_leg.model_copy(update={"tenor": "3M"})
+    })
+    report = validate_irs(fields)
     assert not report.is_valid
-    assert report.missing_fields == ["fixed_leg.day_count"]
+    assert any("must be absent" in e for e in report.errors)
 
 
-def test_non_positive_notional_and_date_order_are_rejected():
-    report = validate_irs(valid_fields(
-        notional=Decimal("0"), maturity_date=date(2026, 9, 1)
-    ))
+def test_an_ibor_leg_without_tenor_is_rejected(eur_fields):
+    fields = eur_fields.model_copy(update={
+        "floating_leg": eur_fields.floating_leg.model_copy(update={"tenor": None})
+    })
+    report = validate_irs(fields)
+    assert any("tenor is required" in e for e in report.errors)
+
+
+def test_an_unsupported_currency_is_out_of_scope(eur_fields):
+    report = validate_irs(eur_fields.model_copy(update={"currency": "GBP"}))
+    assert any("out of scope" in e for e in report.errors)
+
+
+# --- Guardarrailes de sanidad -------------------------------------------
+
+def test_an_impossible_year_is_rejected(eur_fields):
+    """El guardarrail que el tutor pidio: fechas del ano 1050."""
+    fields = eur_fields.model_copy(update={"effective_date": date(1050, 3, 1)})
+    report = validate_irs(fields)
+    assert any("outside the plausible range" in e for e in report.errors)
+
+
+def test_a_negative_notional_is_rejected(eur_fields):
+    report = validate_irs(eur_fields.model_copy(update={"notional": Decimal("-1000")}))
     assert "notional must be positive" in report.errors
-    assert "effective_date must be before maturity_date" in report.errors
 
 
-def test_an_absent_spread_defaults_to_zero():
+def test_a_rate_above_one_is_rejected_as_an_undivided_percentage(eur_fields):
+    """2.75 en lugar de 0.0275: el porcentaje copiado sin dividir."""
+    fields = eur_fields.model_copy(update={
+        "fixed_leg": eur_fields.fixed_leg.model_copy(update={"rate": Decimal("2.75")})
+    })
+    report = validate_irs(fields)
+    assert any("decimal fraction" in e for e in report.errors)
+
+
+def test_a_negative_rate_is_rejected(eur_fields):
+    fields = eur_fields.model_copy(update={
+        "fixed_leg": eur_fields.fixed_leg.model_copy(update={"rate": Decimal("-0.01")})
+    })
+    report = validate_irs(fields)
+    assert any("must not be negative" in e for e in report.errors)
+
+
+def test_maturity_below_one_year_is_out_of_scope(eur_fields):
+    fields = eur_fields.model_copy(update={"maturity_date": date(2027, 3, 1)})
+    report = validate_irs(fields)
+    assert any("below one year" in e for e in report.errors)
+
+
+# --- El calendario que calcula el agente --------------------------------
+
+def test_a_schedule_not_ending_on_maturity_is_rejected(eur_fields):
+    fields = eur_fields.model_copy(update={
+        "fixed_leg": eur_fields.fixed_leg.model_copy(update={
+            "payment_dates": [date(2027, 9, 1), date(2028, 9, 1)]
+        })
+    })
+    report = validate_irs(fields)
+    assert any("must end on maturity_date" in e for e in report.errors)
+
+
+def test_an_unordered_schedule_is_rejected(eur_fields):
+    fields = eur_fields.model_copy(update={
+        "fixed_leg": eur_fields.fixed_leg.model_copy(update={
+            "payment_dates": [date(2029, 9, 1), date(2027, 9, 1), date(2031, 9, 1)]
+        })
+    })
+    report = validate_irs(fields)
+    assert any("ascending order" in e for e in report.errors)
+
+
+def test_an_empty_schedule_is_rejected(eur_fields):
+    fields = eur_fields.model_copy(update={
+        "floating_leg": eur_fields.floating_leg.model_copy(update={"payment_dates": []})
+    })
+    report = validate_irs(fields)
+    assert any("payment_dates is empty" in e for e in report.errors)
+
+
+def test_a_schedule_with_the_wrong_number_of_dates_is_rejected(eur_fields):
+    """Diez fechas semestrales en cinco anos; tres no son un calendario 6M."""
+    fields = eur_fields.model_copy(update={
+        "floating_leg": eur_fields.floating_leg.model_copy(update={
+            "payment_dates": [date(2027, 9, 1), date(2029, 9, 1), date(2031, 9, 1)]
+        })
+    })
+    report = validate_irs(fields)
+    assert any("needs about" in e for e in report.errors)
+
+
+def test_a_broken_period_schedule_is_accepted(eur_fields):
+    """Un tramo final mas corto es legitimo: es un periodo roto, no un error."""
+    fields = eur_fields.model_copy(update={
+        "maturity_date": date(2031, 3, 1),
+        "fixed_leg": eur_fields.fixed_leg.model_copy(update={
+            "payment_dates": [date(2027, 9, 1), date(2028, 9, 1), date(2029, 9, 1),
+                              date(2030, 9, 1), date(2031, 3, 1)],
+        }),
+        "floating_leg": eur_fields.floating_leg.model_copy(update={
+            "payment_dates": [date(2027, 3, 1), date(2027, 9, 1), date(2028, 3, 1),
+                              date(2028, 9, 1), date(2029, 3, 1), date(2029, 9, 1),
+                              date(2030, 3, 1), date(2030, 9, 1), date(2031, 3, 1)],
+        }),
+    })
+    report = validate_irs(fields)
+    assert report.is_valid, report.errors
+
+
+# --- Normalizacion -------------------------------------------------------
+
+def test_lowercase_labels_are_normalised(eur_fields):
+    fields = eur_fields.model_copy(update={
+        "currency": "eur",
+        "floating_leg": eur_fields.floating_leg.model_copy(update={
+            "payment_frequency": "6m", "day_count": "act/360", "tenor": "6m",
+        }),
+    })
+    normalised = with_defaults(fields)
+    assert normalised.currency == "EUR"
+    assert normalised.floating_leg.payment_frequency == "6M"
+    assert normalised.floating_leg.day_count == "ACT/360"
+    assert validate_irs(normalised).is_valid
+
+
+def test_an_absent_spread_defaults_to_zero(eur_fields):
     """Unica convencion que si se rellena: un vanilla sin spread tiene spread 0."""
-    fields = valid_fields(floating_leg=FloatingLegFields(
-        index="EURIBOR", tenor="6M", day_count="ACT/360", payment_frequency="6M"
-    ))
-    assert fields.floating_leg.spread is None
+    fields = eur_fields.model_copy(update={
+        "floating_leg": eur_fields.floating_leg.model_copy(update={"spread": None})
+    })
     assert with_defaults(fields).floating_leg.spread == Decimal(0)
 
 
-def test_a_stated_spread_is_left_untouched():
-    fields = valid_fields()
-    assert with_defaults(fields).floating_leg.spread == Decimal("0")
-    with_spread = valid_fields(floating_leg=FloatingLegFields(
-        index="EURIBOR", tenor="6M", spread=Decimal("0.0025"),
-        day_count="ACT/360", payment_frequency="6M",
-    ))
-    assert with_defaults(with_spread).floating_leg.spread == Decimal("0.0025")
-
-
-def test_defaults_do_not_touch_any_other_term():
-    """Ningun otro termino se rellena: los ausentes se reclaman."""
-    fields = valid_fields(fixed_leg=FixedLegFields(rate=Decimal("0.0275")))
+def test_defaults_do_not_invent_any_other_term(eur_fields):
+    """Ningun otro termino se rellena: los ausentes se reclaman o se corrigen."""
+    fields = eur_fields.model_copy(update={
+        "fixed_leg": FixedLegFields(rate=Decimal("0.0275"))
+    })
     defaulted = with_defaults(fields)
     assert defaulted.fixed_leg.day_count is None
     assert defaulted.fixed_leg.payment_frequency is None
-
-
-def test_unknown_conventions_are_rejected():
-    report = validate_irs(valid_fields(
-        fixed_leg=FixedLegFields(
-            rate=Decimal("0.0275"), day_count="ACT/999", payment_frequency="7M"
-        )
-    ))
-    assert any("day_count must be one of" in e for e in report.errors)
-    assert any("payment_frequency must be one of" in e for e in report.errors)
-
-
-def test_lowercase_frequency_passes_validation_and_is_normalised():
-    """El validador acepta '6m'; with_defaults la lleva a '6M' para que la RFQ
-    no salga en minuscula."""
-    fields = valid_fields(
-        fixed_leg=FixedLegFields(
-            rate=Decimal("0.0275"), day_count="30/360", payment_frequency="1y"
-        ),
-        floating_leg=FloatingLegFields(
-            index="EURIBOR", tenor="6M", day_count="ACT/360", payment_frequency="6m"
-        ),
-    )
-    assert validate_irs(fields).is_valid
-    defaulted = with_defaults(fields)
-    assert defaulted.fixed_leg.payment_frequency == "1Y"
-    assert defaulted.floating_leg.payment_frequency == "6M"
-    assert defaulted.floating_leg.spread == Decimal(0)

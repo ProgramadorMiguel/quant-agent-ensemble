@@ -10,7 +10,6 @@ from google.protobuf import json_format, text_format
 from grpc_tools import protoc
 
 from models.irs_fields import FixedLegFields, FloatingLegFields, IRSFields
-from models.schedule import payment_dates
 
 
 @lru_cache(maxsize=4)
@@ -46,10 +45,10 @@ def _load_pricing_module(proto_path: Path):
 def fields_to_textproto(fields: IRSFields, rfq_id: str, proto_path: Path) -> str:
     """Mapeador determinista. Es el que produce la RFQ que emite el sistema.
 
-    Ademas de copiar los terminos extraidos, genera el calendario de pagos de
-    cada pata (los vectores fixedLegDates y floatingLegDates de la clase Swap
-    del libro) a partir de las fechas y la frecuencia. Ese calendario es
-    deterministico y no se pide a ningun agente.
+    Copia los terminos ya validados, incluidos los calendarios de pago. No genera
+    calendarios: el diseno acordado encarga ese calculo al agente, porque con
+    periodos rotos el calendario no se deduce de la frecuencia, y saber si un
+    modelo de lenguaje lo resuelve es una de las preguntas del trabajo.
     """
     pb = _load_pricing_module(proto_path)
     message = pb.RFQ(rfq_id=rfq_id)
@@ -61,28 +60,26 @@ def fields_to_textproto(fields: IRSFields, rfq_id: str, proto_path: Path) -> str
     irs.effective_date = fields.effective_date.isoformat()
     irs.maturity_date = fields.maturity_date.isoformat()
     irs.discount_curve = fields.discount_curve
-    irs.forecast_curve = fields.forecast_curve
 
     irs.fixed_leg.rate = float(fields.fixed_leg.rate)
     irs.fixed_leg.day_count = fields.fixed_leg.day_count
     irs.fixed_leg.payment_frequency = fields.fixed_leg.payment_frequency
-    irs.fixed_leg.payment_dates.extend(payment_dates(
-        fields.effective_date, fields.maturity_date,
-        fields.fixed_leg.payment_frequency,
-    ))
+    irs.fixed_leg.payment_dates.extend(
+        d.isoformat() for d in fields.fixed_leg.payment_dates
+    )
 
-    irs.floating_leg.index = fields.floating_leg.index
-    irs.floating_leg.tenor = fields.floating_leg.tenor
-    # El valor por omision del diferencial ya viene aplicado por
-    # validation.irs_validator.with_defaults, de modo que el agente proto recibe
-    # exactamente la misma entrada que este mapeador.
-    irs.floating_leg.spread = float(fields.floating_leg.spread)
-    irs.floating_leg.day_count = fields.floating_leg.day_count
-    irs.floating_leg.payment_frequency = fields.floating_leg.payment_frequency
-    irs.floating_leg.payment_dates.extend(payment_dates(
-        fields.effective_date, fields.maturity_date,
-        fields.floating_leg.payment_frequency,
-    ))
+    floating = fields.floating_leg
+    irs.floating_leg.rate_type = pb.FloatingRateType.Value(floating.rate_type)
+    irs.floating_leg.index = floating.index
+    if floating.tenor is not None:
+        irs.floating_leg.tenor = floating.tenor
+    irs.floating_leg.spread = float(floating.spread or 0)
+    irs.floating_leg.day_count = floating.day_count
+    irs.floating_leg.payment_frequency = floating.payment_frequency
+    irs.floating_leg.forecast_curve = floating.forecast_curve
+    irs.floating_leg.payment_dates.extend(
+        d.isoformat() for d in floating.payment_dates
+    )
     return text_format.MessageToString(message)
 
 
@@ -106,6 +103,7 @@ def parse_irs_textproto(proto_text: str, proto_path: Path) -> IRSFields:
 
     fixed = message.fixed_leg
     floating = message.floating_leg
+    rate_type = present(floating, "rate_type")
     return IRSFields.model_validate({
         "notional": present(message, "notional"),
         "currency": present(message, "currency"),
@@ -114,18 +112,24 @@ def parse_irs_textproto(proto_text: str, proto_path: Path) -> IRSFields:
         "effective_date": present(message, "effective_date"),
         "maturity_date": present(message, "maturity_date"),
         "discount_curve": present(message, "discount_curve"),
-        "forecast_curve": present(message, "forecast_curve"),
         "fixed_leg": FixedLegFields.model_validate({
             "rate": present(fixed, "rate"),
             "day_count": present(fixed, "day_count"),
             "payment_frequency": present(fixed, "payment_frequency"),
+            "payment_dates": list(fixed.payment_dates),
         }),
         "floating_leg": FloatingLegFields.model_validate({
+            # El enum llega como entero; se guarda con su nombre para que el
+            # validador y los casos dorados hablen del mismo valor.
+            "rate_type": (pb.FloatingRateType.Name(rate_type)
+                          if rate_type not in (None, 0) else None),
             "index": present(floating, "index"),
             "tenor": present(floating, "tenor"),
             "spread": present(floating, "spread"),
             "day_count": present(floating, "day_count"),
             "payment_frequency": present(floating, "payment_frequency"),
+            "forecast_curve": present(floating, "forecast_curve"),
+            "payment_dates": list(floating.payment_dates),
         }),
     })
 

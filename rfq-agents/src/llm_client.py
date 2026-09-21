@@ -125,29 +125,32 @@ class LLMClient:
                 self.run_id,
             ) from exc
 
-    def generate_proto_text(
-        self,
-        validated_fields: IRSFields,
-        rfq_id: str,
-        schedules: dict[str, list[str]] | None = None,
-    ) -> str:
+    def generate_proto_text(self, validated_fields: IRSFields, rfq_id: str) -> str:
         """Pide al agente proto que serialice los terminos ya validados.
 
-        Recibe tambien los calendarios de pago de cada pata, generados por
-        ``models.schedule``. Sin ellos el agente no podria coincidir nunca con
-        la RFQ de referencia, que si los incluye, y su tasa de fidelidad medaria
-        una imposibilidad en lugar de una capacidad.
+        Recibe exactamente los mismos terminos que el mapeador determinista,
+        calendarios de pago incluidos. Sin ellos no podria coincidir nunca con la
+        RFQ de referencia, que si los contiene, y su tasa de fidelidad mediria una
+        imposibilidad en lugar de una capacidad.
         """
         data = validated_fields.model_dump(mode="json")
         lines = [f"rfq_id: {rfq_id}", "", "Validated IRS fields:"]
-        for key, value in data.items():
+
+        def render(key: str, value: object, indent: str = "") -> None:
+            if value is None:
+                return
             if isinstance(value, dict):
-                lines.append(f"{key}:")
+                lines.append(f"{indent}{key}:")
                 for sub_key, sub_value in value.items():
-                    if sub_value is not None:
-                        lines.append(f"  {sub_key}: {sub_value}")
-                for date in (schedules or {}).get(key, []):
-                    lines.append(f"  payment_dates: {date}")
-            elif value is not None:
-                lines.append(f"{key}: {value}")
+                    render(sub_key, sub_value, indent + "  ")
+            elif isinstance(value, list):
+                # Campo repetido: una linea por elemento, para que el agente vea
+                # la misma forma que debe emitir.
+                for item in value:
+                    lines.append(f"{indent}{key}: {item}")
+            else:
+                lines.append(f"{indent}{key}: {value}")
+
+        for key, value in data.items():
+            render(key, value)
         return self._call("rfq_proto", "\n".join(lines))

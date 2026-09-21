@@ -1,4 +1,0 @@
-Generate an RFQ for a USD interest rate swap, notional USD 50,000,000, valued
-as of 2026-09-15, starting 2026-09-15 and maturing 2036-09-15. We pay fixed at
-3.85% semiannually on a 30/360 basis against 3M SOFR paid quarterly on
-ACT/360. Discount curve USD-SOFR, forecast curve USD-SOFR-3M.

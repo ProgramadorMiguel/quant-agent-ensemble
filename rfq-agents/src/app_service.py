@@ -6,10 +6,9 @@ from typing import Any
 from uuid import uuid4
 
 from llm_client import LLMClient
-from models.schedule import payment_dates
 from proto.proto_mapper import fields_to_textproto, validate_textproto
 from settings import Settings, get_settings
-from validation.irs_validator import validate_irs, with_defaults
+from validation.irs_validator import ValidationReport, validate_irs, with_defaults
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -50,12 +49,47 @@ class RFQGenerationResult:
     generated_proto_text: str | None
     output_file_path: str | None
     proto_agent: ProtoAgentOutcome = ProtoAgentOutcome(False, False, False)
+    # Cuantas pasadas de extraccion se han necesitado. 1 significa que salio a la
+    # primera; el maximo significa que se agotaron los intentos.
+    iterations: int = 1
+    # Errores de cada intento fallido, en orden. Es la traza de la autocorreccion.
+    iteration_errors: tuple[tuple[str, ...], ...] = ()
+
+
+def _retry_prompt(prompt: str, report: ValidationReport) -> str:
+    """Peticion original mas el diagnostico del intento anterior.
+
+    Reintentar con el mismo texto daria el mismo resultado. Lo que hace util el
+    bucle es devolverle al agente **que** ha fallado, en los mismos terminos en
+    que el validador lo ha detectado.
+    """
+    problems = "\n".join(f"  - {e}" for e in report.errors)
+    return (
+        f"{prompt}\n\n"
+        "--- Correction required ---\n"
+        "A previous attempt at this same request was rejected by deterministic\n"
+        "validation for the following reasons:\n"
+        f"{problems}\n\n"
+        "Produce the message again, fixing every point above and changing nothing\n"
+        "else. Do not restate the problems; return only the protobuf message."
+    )
 
 
 def generate_rfq_from_prompt(
-    prompt: str, *, model_override: str | None = None
+    prompt: str, *, model_override: str | None = None, max_iterations: int | None = None
 ) -> RFQGenerationResult:
-    """Reusable application service for CLI and a future Streamlit adapter."""
+    """Servicio de aplicacion: de texto libre a RFQ, o a error.
+
+    El contrato tiene solo dos salidas y no admite revision humana intermedia: o
+    una RFQ bien conformada, o un error que dice por que no ha sido posible.
+
+    Cuando la validacion detecta un error **del modelo** (una convencion que no
+    corresponde a la divisa, un calendario incoherente, un valor imposible), el
+    diagnostico se devuelve al agente y se reintenta, hasta ``max_iterations``
+    pasadas. Cuando lo que falta es un termino que la peticion nunca enuncio, no
+    se reintenta: la informacion no esta y ninguna pasada adicional la va a
+    producir.
+    """
     if not prompt.strip():
         raise ValueError("Prompt must not be empty")
 
@@ -64,6 +98,8 @@ def generate_rfq_from_prompt(
     if model_override:
         settings = Settings(settings.openai_api_key, model_override)
     client = LLMClient(settings, PROJECT_ROOT, run_id)
+    limit = max_iterations or client.config.max_iterations
+
     product_type = client.classify_product(prompt)
     if product_type != "IRS":
         return RFQGenerationResult(
@@ -77,32 +113,45 @@ def generate_rfq_from_prompt(
             output_file_path=None,
         )
 
-    fields = client.extract_irs(prompt)
-    report = validate_irs(fields)
     output_dir = PROJECT_ROOT / "outputs"
     output_dir.mkdir(exist_ok=True)
+
+    # El bucle solo reenvia al especialista. La clasificacion de producto no se
+    # repite: el orquestador ya ha dicho que es un IRS y ningun error de
+    # convencion o de calendario cambia esa respuesta, de modo que repetirla
+    # gastaria una llamada sin poder alterar el resultado.
+    attempt_prompt = prompt
+    history: list[tuple[str, ...]] = []
+    for iteration in range(1, limit + 1):
+        fields = with_defaults(client.extract_irs(attempt_prompt))
+        report = validate_irs(fields)
+        if report.is_valid or not report.retryable or iteration == limit:
+            break
+        history.append(tuple(report.errors))
+        attempt_prompt = _retry_prompt(prompt, report)
+
     report_path = output_dir / f"validation_{run_id}.txt"
     report_path.write_text(report.to_text(), encoding="utf-8")
-
     field_dict = fields.model_dump(mode="json")
+    common = {
+        "run_id": run_id,
+        "product_type": product_type,
+        "extracted_fields": field_dict,
+        "iterations": iteration,
+        "iteration_errors": tuple(history),
+    }
+
     if not report.is_valid:
         return RFQGenerationResult(
-            run_id=run_id,
-            product_type=product_type,
-            extracted_fields=field_dict,
             validation_status="INVALID",
             validation_errors=report.errors,
             missing_fields=report.missing_fields,
             generated_proto_text=None,
             output_file_path=None,
+            **common,
         )
 
     proto_path = PROJECT_ROOT / "protos/pricing.proto"
-    # Los valores por omision se aplican aqui, una sola vez, para que el mapeador
-    # determinista y el agente proto partan de la misma entrada. Si se aplicasen
-    # dentro del mapeador, la comparacion entre ambos mediria esa diferencia de
-    # entrada y no la capacidad del agente.
-    fields = with_defaults(fields)
     # Source of truth: this is the RFQ the system emits and a pricer consumes.
     proto_text = fields_to_textproto(fields, run_id, proto_path)
     proto_agent = _measure_proto_agent(client, fields, run_id, proto_path, proto_text)
@@ -110,15 +159,13 @@ def generate_rfq_from_prompt(
     output_path = output_dir / f"rfq_{run_id}.textproto"
     output_path.write_text(proto_text, encoding="utf-8")
     return RFQGenerationResult(
-        run_id=run_id,
-        product_type=product_type,
-        extracted_fields=field_dict,
         validation_status="VALID",
         validation_errors=[],
         missing_fields=[],
         generated_proto_text=proto_text,
         output_file_path=str(output_path),
         proto_agent=proto_agent,
+        **common,
     )
 
 
@@ -127,22 +174,15 @@ def _measure_proto_agent(
 ) -> ProtoAgentOutcome:
     """Run the proto agent and compare it against the deterministic mapper.
 
-    The agent receives the same payment schedules the mapper generates. Without
-    them it could never match the reference, and the fidelity rate would measure
-    an impossibility instead of a capability.
+    The agent receives exactly the terms the mapper receives, payment schedules
+    included. Without them it could never match the reference, and the fidelity
+    rate would measure an impossibility instead of a capability.
 
     Never raises: a badly serialised RFQ is an observation about the model, not
     a reason to abort a run that already has a valid RFQ.
     """
-    schedules = {
-        leg: payment_dates(
-            fields.effective_date, fields.maturity_date,
-            getattr(fields, leg).payment_frequency,
-        )
-        for leg in ("fixed_leg", "floating_leg")
-    }
     try:
-        raw = client.generate_proto_text(fields, run_id, schedules)
+        raw = client.generate_proto_text(fields, run_id)
     except Exception as exc:
         return ProtoAgentOutcome(False, False, False, f"{type(exc).__name__}: {exc}")
     try:

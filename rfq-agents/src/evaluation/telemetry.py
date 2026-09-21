@@ -77,6 +77,10 @@ ADDED_COLUMNS = {
         # del mismo caso aparecen como inestabilidad del modelo cuando en
         # realidad reflejan un cambio de referencia.
         "batch_id": "TEXT",
+        # Pasadas del bucle de autocorreccion que ha necesitado el caso. 1 es a la
+        # primera. Permite medir cuanto aporta el bucle: si casi todo se resuelve
+        # en la primera pasada, cuesta latencia y no compensa.
+        "iterations": "INTEGER",
     },
 }
 

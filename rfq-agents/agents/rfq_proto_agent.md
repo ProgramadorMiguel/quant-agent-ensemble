@@ -64,7 +64,13 @@ Return exactly one protobuf text-format message and nothing else.
   `floating_leg` submessages.
 - Boolean fields are the bare literals `true` or `false`, never quoted:
   `is_fixed_rate_receiver: false`, not `is_fixed_rate_receiver: "false"`.
+- Enum fields are bare identifiers, never quoted: `rate_type: IBOR`, not
+  `rate_type: "IBOR"`.
 - String fields are double-quoted. Numeric fields are unquoted.
+- `discount_curve` belongs to the swap; `forecast_curve` belongs **inside**
+  `floating_leg`. Put each where the schema declares it.
+- Omit `floating_leg.tenor` when it is absent from the input. A compounded
+  overnight leg has no fixing tenor and the field must not appear.
 - Each leg's `payment_dates` are supplied in the request, one per line. Copy
   every one of them, in the order given, as a repeated field: one
   `payment_dates: "YYYY-MM-DD"` line per date, inside the leg it belongs to.

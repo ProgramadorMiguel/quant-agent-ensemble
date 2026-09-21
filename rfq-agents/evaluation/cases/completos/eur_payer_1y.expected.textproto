@@ -1,0 +1,25 @@
+notional: 4000000
+currency: "EUR"
+is_fixed_rate_receiver: false
+valuation_date: "2026-09-01"
+effective_date: "2026-09-01"
+maturity_date: "2027-09-01"
+discount_curve: "EUR-ESTR"
+fixed_leg {
+  rate: 0.024
+  day_count: "30U/360"
+  payment_frequency: "1Y"
+  payment_dates: "2027-09-01"
+}
+floating_leg {
+  rate_type: IBOR
+  index: "EURIBOR"
+  tenor: "3M"
+  day_count: "ACT/360"
+  payment_frequency: "3M"
+  forecast_curve: "EUR-EURIBOR-3M"
+  payment_dates: "2026-12-01"
+  payment_dates: "2027-03-01"
+  payment_dates: "2027-06-01"
+  payment_dates: "2027-09-01"
+}

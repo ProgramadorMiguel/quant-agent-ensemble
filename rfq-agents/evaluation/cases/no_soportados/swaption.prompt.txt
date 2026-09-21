@@ -1,2 +1,2 @@
 Price a European swaption on a 5-year EUR interest rate swap, notional
-EUR 10,000,000, expiring 2027-09-01, strike 2.75%, payer. Discount EUR-ESTR.
+EUR 10,000,000, expiring 2027-09-01, strike 2.75%, payer.

@@ -1,0 +1,2 @@
+Value as of 2026-09-01 an EUR interest rate swap from 2026-09-01 to 2031-09-01.
+We pay fixed at 2.60%.
