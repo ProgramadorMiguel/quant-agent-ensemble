@@ -16,10 +16,23 @@ version: 1
 
 # Modelo por defecto. Se puede sobreescribir con LLM_MODEL en .env o con
 # --models en el evaluador.
-model: gpt-4.1-mini
+#
+# Es el recomendado tras la comparativa: acierta los 23 casos al menor coste
+# entre los modelos que lo consiguen.
+model: gpt-5.6-terra
 
-# Parámetros de muestreo. temperature 0 busca reproducibilidad en OpenAI.
-# Nota: los modelos Claude actuales no aceptan este parámetro.
+# Parámetros de muestreo.
+#
+# ADVERTENCIA: ninguno de los modelos evaluados admite fijar la temperatura. Los
+# de OpenAI devuelven un error cuando se envía un valor distinto del suyo por
+# omisión, y el cliente de Anthropic no acepta siquiera el parámetro. La capa de
+# src/providers.py lo trata como una capacidad que el proveedor puede rechazar y
+# repite la llamada sin él.
+#
+# El valor se conserva declarado porque sí se aplica a modelos que lo admitan,
+# pero NO debe leerse como que las tandas se midieron a temperatura cero: no fue
+# posible, y por eso la reproducibilidad se apoya en conservar constantes los
+# casos, las instrucciones y el esquema, no en este parámetro.
 sampling:
   temperature: 0
 

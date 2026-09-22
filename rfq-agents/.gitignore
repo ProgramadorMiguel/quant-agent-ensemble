@@ -10,3 +10,11 @@ outputs/**
 !outputs/.gitkeep
 evaluation/cases/*.result.txt
 ~$*
+
+# Volcados temporales de las sesiones de trabajo. El registro de los
+# experimentos, que es lo que hay que conservar, esta en
+# docs/REGISTRO_EXPERIMENTOS.md, y las cifras son reconstruibles desde las bases
+# archivadas.
+tmp_*.txt
+tmp_*.py
+sweep_*.txt

@@ -1,0 +1,62 @@
+\chapter{Implementación}
+
+\section{Tecnologías utilizadas y versiones}
+
+La implementación se desarrolló en Python sobre Windows 11, compilación 10.0.26200. La elección de Python respondió a la disponibilidad de bibliotecas para consumir modelos de lenguaje, procesar mensajes \textit{Protocol Buffers}, validar estructuras de datos y ejecutar la evaluación experimental. El proyecto requiere Python 3.11 o superior por el uso de módulos incorporados en versiones recientes del lenguaje, mientras que el entorno experimental utilizó Python 3.13.15 de 64 bits, compilado con MSC v.1944.
+
+Las dependencias se declararon en dos niveles. El archivo \texttt{requirements.txt} establece intervalos de versiones compatibles, mientras que \texttt{requirements.lock} registra las versiones exactas utilizadas en el entorno experimental. Este último se actualizó después de incorporar el soporte de Anthropic y permite reconstruir el entorno con las mismas dependencias empleadas para generar los resultados.
+
+Los modelos de OpenAI se consumieron mediante la biblioteca oficial \texttt{openai}, fijada en la versión 1.109.1. Para los modelos de Anthropic se utilizó su cliente oficial en la versión 1.7.0. Ambas bibliotecas se encapsularon mediante una capa común de proveedor para evitar que las diferencias entre sus interfaces afectasen al resto de la aplicación.
+
+Pydantic se utilizó para representar y validar inicialmente los términos extraídos por el agente especialista. La versión fijada fue la 2.13.5. Sus modelos permiten convertir la salida textual en objetos Python con una estructura conocida antes de aplicar las reglas financieras del validador. Esta validación de tipos internos complementa, pero no sustituye, la validación semántica de la operación.
+
+La definición de la \textit{RFQ} se realizó mediante \textit{Protocol Buffers}. La versión fijada de la biblioteca \texttt{protobuf} fue la 6.33.6 y las clases de Python se generaron con \texttt{grpcio-tools} 1.81.1. Aunque esta última biblioteca incluye herramientas asociadas a gRPC, el proyecto no implementa un servicio gRPC. Se utiliza únicamente su compilador para generar las clases de Python desde \texttt{pricing.proto}.
+
+La configuración declarativa de los agentes se almacenó en YAML y se cargó mediante PyYAML 6.0.3. El archivo \texttt{agents.yaml} define los agentes, las rutas de sus instrucciones, los recursos adicionales que recibe cada uno y el límite máximo de iteraciones. Las instrucciones específicas se conservan en Markdown y el esquema se incorpora únicamente a los agentes que deben producir mensajes estructurados.
+
+La configuración local y las credenciales se cargaron mediante \texttt{python-dotenv} 1.2.3. Las claves de acceso permanecen en un archivo \texttt{.env} excluido del repositorio. De esta forma, el código puede declarar las variables necesarias sin almacenar sus valores ni exponerlos en el control de versiones.
+
+La telemetría y los resultados experimentales se almacenaron en SQLite mediante la biblioteca estándar de Python. Esta elección permitió conservar cada llamada, su consumo de tokens, latencia, coste y resultado sin introducir un servidor de base de datos externo. Las bases correspondientes a las tandas definitivas se archivaron en el repositorio para mantener la evidencia utilizada en la memoria.
+
+Las pruebas automatizadas se ejecutaron con \texttt{pytest} 8.4.2. La batería final contiene 84 pruebas, que cubren el esquema, la transformación de datos, las convenciones, la validación, el mapeo, el procedimiento de evaluación, el bucle de autocorrección y la capa común de proveedores. El bucle se prueba mediante un cliente simulado que permite recorrer la ruta de reintento sin realizar llamadas externas, mientras que las pruebas de proveedores comprueban, entre otros aspectos, la normalización del consumo de tokens utilizada para comparar los costes. Además, una herramienta específica verifica la coherencia de los 23 casos dorados antes de iniciar una tanda.
+
+Git se utilizó para controlar las versiones del código, las instrucciones, el esquema, los casos de prueba y las bases de datos archivadas. El historial permite identificar los cambios que dieron lugar a cada versión del sistema y separar los resultados obtenidos antes y después de modificar las instrucciones o las referencias de evaluación.
+
+La Tabla~\ref{tab:tecnologias_versiones} resume las principales tecnologías y las versiones fijadas para el entorno experimental.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Tecnologías y versiones del entorno experimental}
+\label{tab:tecnologias_versiones}
+\begin{tabular}{|P{4.0cm}|P{3.0cm}|P{6.3cm}|}
+\hline
+\textbf{Tecnología} & \textbf{Versión} & \textbf{Función} \\
+\hline
+Windows & 11, compilación 10.0.26200 & Sistema operativo del entorno experimental. \\
+\hline
+Python & 3.13.15, 64 bits & Lenguaje principal de implementación. \\
+\hline
+OpenAI SDK & 1.109.1 & Acceso a los modelos de OpenAI. \\
+\hline
+Anthropic SDK & 1.7.0 & Acceso a los modelos de Anthropic. \\
+\hline
+Pydantic & 2.13.5 & Modelos internos y validación de tipos. \\
+\hline
+Protocol Buffers & 6.33.6 & Contrato estructural y análisis de mensajes. \\
+\hline
+grpcio-tools & 1.81.1 & Generación de clases Python desde el archivo \texttt{.proto}. \\
+\hline
+PyYAML & 6.0.3 & Lectura de la configuración declarativa de los agentes. \\
+\hline
+python-dotenv & 1.2.3 & Carga local de variables de entorno. \\
+\hline
+pytest & 8.4.2 & Ejecución de 84 pruebas automatizadas. \\
+\hline
+SQLite & 3.50.4, incluida en Python & Almacenamiento de telemetría y resultados experimentales. \\
+\hline
+Git & No fijada & Control de versiones y trazabilidad de los cambios. \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia.}
+\end{table}
