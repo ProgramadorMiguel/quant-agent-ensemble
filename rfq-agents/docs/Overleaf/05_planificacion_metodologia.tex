@@ -16,8 +16,217 @@ El trabajo combinó componentes probabilísticos y deterministas. Los primeros s
 
 La evolución del proyecto se gestionó mediante control de versiones. Los cambios en el código, los esquemas, las instrucciones y los casos de prueba quedaron asociados a versiones identificables. Además, las ejecuciones experimentales se agruparon en tandas independientes para evitar que resultados obtenidos con configuraciones o referencias diferentes se combinaran en un mismo análisis. Esta separación resulta necesaria para mantener la trazabilidad y poder reproducir las condiciones de cada experimento.
 
-La configuración de los modelos y de los componentes encargados de procesar las peticiones se mantuvo separada del código principal. De esta forma, parámetros como el modelo utilizado, la temperatura o las instrucciones pueden modificarse sin alterar la lógica general del programa. Este planteamiento facilita la comparación entre configuraciones y reduce el riesgo de introducir cambios no controlados durante la experimentación.
+La configuración de los proveedores, los modelos y las instrucciones se mantuvo separada del código principal. De esta forma, estos elementos pueden modificarse sin alterar la lógica general del programa. La temperatura no se utilizó como factor experimental porque las interfaces actuales de ambos proveedores no permiten configurarla para los modelos evaluados. Este planteamiento facilita la comparación entre configuraciones y reduce el riesgo de introducir cambios no controlados durante la experimentación.
 
 Las revisiones realizadas durante el proyecto también permitieron modificar decisiones iniciales. Entre los cambios más relevantes se encuentran la ampliación de la estructura de los \textit{IRS}, la diferenciación entre campos obligatorios y atributos derivados mediante convenciones de mercado, la representación explícita de las fechas de pago y la definición de un proceso de corrección limitado a cinco intentos. Estos cambios no se trataron como desviaciones aisladas, sino como parte del proceso incremental de refinamiento de los requisitos.
 
 En conjunto, el enfoque adoptado permitió avanzar desde una versión mínima y verificable hacia una definición más completa del problema. Cada iteración produjo evidencia utilizada para corregir errores, revisar supuestos y decidir el siguiente incremento, manteniendo separados el desarrollo de la solución y su evaluación experimental.
+
+
+\section{Fases del proyecto}
+
+El proyecto se dividió en fases relacionadas, pero no estrictamente secuenciales. El enfoque iterativo permitió revisar decisiones anteriores cuando las pruebas revelaron limitaciones en los requisitos, en la representación financiera, en las instrucciones o en los criterios de evaluación. Por tanto, las fases describen la evolución general del trabajo, aunque algunas actividades se solaparon y se repitieron durante distintos ciclos.
+
+La primera fase consistió en analizar el problema y delimitar su alcance. Se estudió el proceso mediante el cual una petición de cotización o valoración expresada en lenguaje natural debe transformarse en una estructura procesable. Durante esta fase se identificaron dificultades como la variabilidad terminológica, la ausencia de información, las dependencias entre atributos y el riesgo de incorporar valores no justificados. También se decidió limitar el alcance inicial a peticiones de \textit{IRS vanilla} denominadas en EUR o USD y con vencimientos iguales o superiores a un año.
+
+La segunda fase se centró en definir la representación financiera de la \textit{RFQ}. Se identificaron los términos comunes de la operación y los atributos específicos de las patas fija y flotante. El esquema se diseñó a partir de la estructura financiera descrita por \textcite{ausin2025quantitative}, diferenciando las convenciones de recuento de días, las frecuencias de pago, los índices de referencia y los calendarios de cada pata, junto con la curva de descuento común y la curva de estimación propia de la pata flotante.
+
+Durante esta fase también se distinguieron los siete campos obligatorios de los atributos que pueden derivarse mediante convenciones de mercado. Los campos obligatorios son el propósito de la \textit{RFQ}, las fechas de valoración, inicio y vencimiento, la divisa, el nocional y la dirección de la operación. El propósito permite diferenciar una cotización a tipo par de la valoración de una operación ya contratada. En el primer caso, el tipo fijo debe estar ausente porque constituye la incógnita de la cotización; en el segundo, debe incluirse el tipo pactado cuya valoración se solicita.
+
+La tercera fase abordó el diseño del proceso de conversión. La tarea se dividió en cinco etapas: recepción de la petición, clasificación del producto, extracción y derivación de los términos financieros, validación determinista y mapeo de la operación a la \textit{RFQ}. La validación se situó antes de la serialización para impedir la emisión de una estructura incorrecta y para devolver al proceso de extracción un diagnóstico cuando el error pudiera corregirse. Este proceso se limitó a un máximo de cinco intentos.
+
+Durante el diseño también se consideraron distintas formas de distribuir las responsabilidades. La alternativa seleccionada combina agentes especializados para las tareas interpretativas con componentes deterministas para comprobar las reglas financieras y generar la salida final. La comparación completa con una implementación monolítica se mantuvo como una ampliación posterior y no forma parte de la evaluación cerrada del proyecto.
+
+La cuarta fase consistió en implementar un prototipo funcional. Se construyeron los componentes necesarios para clasificar la solicitud, extraer y derivar sus términos, comprobar la coherencia de la operación y producir la \textit{RFQ} estructurada. La configuración de los proveedores, los modelos y las instrucciones se mantuvo separada de la lógica principal, lo que permitió modificar estos elementos sin alterar el resto del sistema.
+
+La quinta fase se dedicó a las pruebas y al refinamiento. Se definieron casos de referencia que incluían cotizaciones, valoraciones de operaciones existentes, expresiones propias de una mesa de negociación, peticiones no valorables y productos no soportados. Las pruebas permitieron revisar no solo el comportamiento de los modelos, sino también la información transmitida entre componentes, las instrucciones y las propias referencias utilizadas para evaluar las salidas.
+
+Esta fase mostró que un resultado incorrecto podía proceder del sistema de evaluación y no necesariamente del modelo. Por ello, antes de atribuir un fallo al componente probabilístico, se comprobó que la tarea pudiera resolverse con la información suministrada y que la referencia esperada fuera alcanzable. Las modificaciones en los casos, las instrucciones y la instrumentación se registraron mediante control de versiones, y las ejecuciones correspondientes a configuraciones diferentes se mantuvieron separadas.
+
+La sexta fase correspondió a la evaluación experimental. Se consolidó un conjunto de 23 casos, distribuido en cinco familias, y se evaluaron seis modelos pertenecientes a dos proveedores. Las ejecuciones se organizaron en tandas identificables y se registraron las salidas, la validación, la latencia, el consumo de tokens y el coste. También se analizó el funcionamiento del bucle de autocorrección, que actuó como una red de seguridad frente a errores de extracción y especificaciones imperfectas. La metodología, las métricas y las amenazas a la validez se presentan en detalle en el capítulo 9.
+
+La última fase comprende la documentación y el análisis de los resultados. En ella se consolidan las decisiones adoptadas, se describen las versiones utilizadas y se relaciona la evidencia experimental con los objetivos del trabajo. Esta fase incluye también la identificación de limitaciones y líneas futuras, como la extensión del bucle a los errores de clasificación, la comparación completa con una arquitectura monolítica, la ampliación a otros productos y la integración con un motor de valoración.
+
+La Tabla~\ref{tab:fases_proyecto} resume las fases principales y el resultado obtenido en cada una.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Fases principales del proyecto}
+\label{tab:fases_proyecto}
+\begin{tabular}{|P{2.5cm}|P{7.1cm}|P{4.0cm}|}
+\hline
+\textbf{Fase} & \textbf{Actividades principales} & \textbf{Resultado} \\
+\hline
+1. Análisis y alcance & Estudio del problema, identificación de dificultades y delimitación del producto. & Problema definido y alcance limitado a \textit{IRS vanilla} en EUR y USD. \\
+\hline
+2. Representación financiera & Definición de campos, patas, propósito, convenciones, calendarios, curva de descuento común y curva de estimación de la pata flotante. & Esquema financiero de la \textit{RFQ}. \\
+\hline
+3. Diseño del proceso & Separación de responsabilidades y definición del flujo de validación. & Diseño conceptual de la conversión. \\
+\hline
+4. Implementación & Desarrollo de los componentes probabilísticos y deterministas. & Sistema ejecutable. \\
+\hline
+5. Pruebas y refinamiento & Casos de referencia, detección de fallos y revisión de la instrumentación. & Versión corregida y casos trazables. \\
+\hline
+6. Evaluación experimental & Evaluación de 23 casos, distribuidos en cinco familias, con seis modelos de dos proveedores. & Evidencia cuantitativa. \\
+\hline
+7. Documentación y análisis & Consolidación de decisiones, resultados, limitaciones y líneas futuras. & Memoria y conclusiones. \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia.}
+\end{table}
+
+
+\section{Cronograma}
+
+La planificación temporal del proyecto se organizó en torno a entregables verificables, en lugar de asignar una duración completamente rígida e independiente a cada fase. Esta decisión responde al carácter iterativo del desarrollo, ya que la definición del esquema, las instrucciones de los agentes, los casos de prueba y la instrumentación se revisaron a partir de los resultados obtenidos.
+
+El proyecto comenzó durante la primera mitad de agosto de 2026 con el análisis del problema, la revisión del flujo de una petición de valoración y la delimitación inicial del alcance. Durante esta etapa se identificaron los términos necesarios para representar un \textit{IRS vanilla}, las principales dificultades de la conversión desde lenguaje natural y las alternativas disponibles para estructurar la operación.
+
+A partir de este análisis se desarrolló el primer prototipo funcional. El 25 de agosto se alcanzó el primer hito verificable en el repositorio: un producto mínimo viable capaz de transformar peticiones de \textit{IRS vanilla} en una representación estructurada. Durante los días siguientes se incorporaron la configuración declarativa de los agentes, los primeros casos de referencia y la infraestructura básica para registrar métricas y comparar resultados.
+
+Entre finales de agosto y la primera mitad de septiembre se revisaron el prototipo y la representación financiera. Esta etapa permitió identificar limitaciones en la estructura inicial y preparar una definición más rigurosa de las patas fija y flotante. El 14 de septiembre se incorporó un esquema basado en la definición financiera utilizada como referencia, con dos patas, calendarios diferenciados y un marco de doble curva \citep{ausin2025quantitative}.
+
+La reunión de seguimiento con el tutor del 15 de septiembre dio lugar a una revisión del alcance y de varios elementos del esquema. Entre las decisiones adoptadas se encontraban la representación explícita de los calendarios de cada pata, la separación entre los siete campos obligatorios y los atributos derivados mediante convenciones de mercado, la ubicación de la curva de estimación dentro de la pata flotante y la incorporación de un proceso de autocorrección limitado a cinco intentos.
+
+El 21 de septiembre se implementaron y comprobaron estas modificaciones, se verificaron las convenciones aplicables a los \textit{IRS} denominados en EUR y USD contra fuentes de referencia del sector, se ampliaron los casos de prueba y se corrigieron las instrucciones y los mecanismos de validación. Esta etapa mantuvo la validación antes del mapeo y la serialización, de modo que una operación incoherente no pudiera convertirse en una \textit{RFQ} definitiva.
+
+Ese mismo día se completó la evaluación experimental. El conjunto definitivo quedó formado por 23 casos distribuidos en cinco familias y se ejecutó con seis modelos pertenecientes a dos proveedores. Las ejecuciones se almacenaron en tandas identificables junto con las salidas, los resultados de validación, la latencia, el consumo de tokens y el coste.
+
+El 22 de septiembre se cerró el desarrollo técnico con 84 pruebas superadas y los 23 casos de referencia verificados. A partir de ese momento, el trabajo se concentró en la redacción y revisión de la memoria, cuya entrega final está prevista para el 25 de septiembre. Esta fase incluye la consolidación de los capítulos, la incorporación del resumen en inglés, la revisión de las referencias bibliográficas y la comprobación final del documento en la plantilla oficial de la universidad.
+
+El periodo comprendido entre la entrega de la memoria y el 9 de octubre se reserva para preparar la presentación y la defensa. Esta última etapa no modifica el contenido técnico entregado, sino que se centra en seleccionar los resultados principales, preparar el material visual y estructurar la exposición oral.
+
+La Figura~\ref{fig:cronograma_proyecto} representa las principales fases, los solapamientos y los hitos del proyecto. El diagrama agrupa las actividades por semanas para facilitar su lectura; por este motivo, el rediseño y la evaluación, realizados el mismo día, aparecen en la misma columna. Las fechas anteriores al primer registro del repositorio reflejan el periodo de análisis y definición previo a la implementación, mientras que los hitos técnicos posteriores están respaldados por el historial de versiones y los registros experimentales.
+
+\begin{figure}[H]
+\centering
+\begin{ganttchart}[
+    hgrid,
+    vgrid,
+    x unit=1.55cm,
+    y unit chart=0.62cm,
+    title height=1,
+    bar height=0.55,
+    milestone height=0.55,
+    title label font=\scriptsize\bfseries,
+    bar label font=\scriptsize,
+    milestone label font=\scriptsize,
+    group label font=\scriptsize\bfseries,
+    bar/.append style={fill=gray!45},
+    group/.append style={fill=azulUC3M},
+    milestone/.append style={fill=black},
+    link/.style={->, thick}
+]{1}{9}
+
+\gantttitle{Agosto}{4}
+\gantttitle{Septiembre}{3}
+\gantttitle{Octubre}{2} \\
+
+\gantttitle{S1}{1}
+\gantttitle{S2}{1}
+\gantttitle{S3}{1}
+\gantttitle{S4}{1}
+\gantttitle{S1}{1}
+\gantttitle{S2}{1}
+\gantttitle{S3}{1}
+\gantttitle{S1}{1}
+\gantttitle{S2}{1} \\
+
+\ganttbar{Análisis y alcance}{1}{2} \\
+\ganttbar{Prototipo inicial}{2}{4} \\
+\ganttmilestone{MVP}{4} \\
+\ganttbar{Revisión del esquema}{4}{5} \\
+\ganttmilestone{Revisión con el tutor}{5} \\
+\ganttbar{Rediseño e implementación}{7}{7} \\
+\ganttbar{Evaluación experimental}{7}{7} \\
+\ganttmilestone{Cierre técnico}{7} \\
+\ganttbar{Redacción de la memoria}{6}{7} \\
+\ganttmilestone{Entrega final}{7} \\
+\ganttbar{Preparación de la defensa}{8}{9} \\
+\ganttmilestone{Presentación}{9}
+
+\end{ganttchart}
+\caption[Cronograma del proyecto]{Cronograma de desarrollo, evaluación, redacción y presentación del proyecto}
+\label{fig:cronograma_proyecto}
+\floatfoot{Fuente: elaboración propia.}
+\end{figure}
+
+
+\section{Riesgos y decisiones de alcance}
+
+La planificación del proyecto exigió controlar tanto riesgos técnicos como metodológicos. La principal dificultad no consistía únicamente en conseguir que un modelo generase una salida con el formato esperado, sino en asegurar que dicha salida representase correctamente la operación y que el procedimiento utilizado para evaluarla no introdujera errores propios. Por este motivo, las decisiones de alcance se revisaron durante el desarrollo a partir de la evidencia obtenida.
+
+El primer riesgo fue la ampliación excesiva del dominio financiero. Un esquema multiproducto habría requerido definir estructuras, campos y reglas diferentes para cada derivado, además de construir casos de prueba representativos. Para mantener una profundidad suficiente, se limitó la implementación evaluada a \textit{IRS vanilla} denominados en EUR y USD y con vencimientos iguales o superiores a un año. Quedaron fuera otras divisas, los productos con componentes opcionales y las estructuras no lineales o con nocionales variables.
+
+Esta delimitación también afectó a la integración con el motor de valoración. El objetivo principal se fijó en la transformación de lenguaje natural en una \textit{RFQ} estructurada y validada. La integración completa con QuantLib se aplazó porque habría añadido otro bloque de trabajo relacionado con datos de mercado, construcción de curvas y cálculo financiero. La salida se diseñó para ser consumida posteriormente por un motor de valoración, pero el sistema evaluado no calcula por sí mismo el precio ni las métricas de riesgo.
+
+El segundo riesgo fue utilizar convenciones de mercado incorrectas o desactualizadas. Este problema resultó especialmente relevante para los \textit{swaps} en USD, cuya estructura cambió tras la desaparición del LIBOR. Para reducirlo, las convenciones de EUR y USD se contrastaron con fuentes sectoriales y se representaron por separado los índices IBOR y los tipos a un día compuestos. Las convenciones se incorporaron a la validación determinista para comprobar los valores derivados por el modelo, no para completar automáticamente la operación sin evaluar su capacidad de extracción.
+
+Un tercer riesgo procedía de la ambigüedad o la falta de información en la petición. Una solicitud puede omitir un campo obligatorio, utilizar una expresión relativa o indicar una convención no estándar. El sistema distingue los errores que pueden corregirse mediante una nueva extracción de aquellos que no pueden resolverse porque la información no existe. En el primer caso, el diagnóstico del validador alimenta un proceso de autocorrección limitado a cinco intentos. En el segundo, se devuelve un error explícito sin consumir nuevas iteraciones.
+
+La admisión de convenciones no estándar requiere determinar si la petición las enuncia expresamente. Esta comprobación se realiza mediante detección léxica sobre un vocabulario cerrado. La decisión permite respetar una convención solicitada sin confundirla con una derivación errónea del modelo, pero introduce una limitación: el mecanismo detecta determinadas expresiones y abreviaturas, aunque no interpreta el significado completo de la frase. Una formulación no incluida en el vocabulario puede no ser reconocida como especificación explícita.
+
+Otro riesgo relevante fue atribuir al modelo errores producidos por el propio sistema de evaluación. Durante el desarrollo se documentaron siete defectos de instrumentación. Seis afectaron a la medición del acierto y el séptimo al coste. De los seis, tres procedían de asimetrías entre las ramas comparadas, dos de instrucciones ambiguas que inducían la salida errónea y uno de un caso de referencia mal clasificado. El séptimo afectó al coste porque una tarifa corregida después de una ejecución no actualizaba el valor almacenado. Como respuesta, se revisaron las instrucciones, las entradas proporcionadas a cada componente y los casos de referencia; se separaron las tandas mediante identificadores; y se conservaron los tokens necesarios para recalcular los costes cuando cambiasen las tarifas.
+
+La dependencia de proveedores externos introdujo riesgos adicionales. Los modelos pueden modificar su comportamiento, rechazar parámetros o devolver una salida que incumpla el contrato de formato. Para reducir este acoplamiento, el acceso a los proveedores se separó de la lógica financiera y se definió una interfaz común. La temperatura se excluyó como factor experimental porque las interfaces de los modelos evaluados no permiten configurarla. En consecuencia, la reproducibilidad no puede apoyarse en fijar este parámetro y debe depender de la conservación de los casos, las instrucciones, las versiones y las salidas de cada tanda.
+
+También se consideró la posibilidad de comparar la arquitectura multiagente con una implementación monolítica. Esta comparación habría permitido estudiar si la división de responsabilidades compensa el coste y la latencia adicionales. Sin embargo, se aplazó para evitar ampliar la evaluación una vez cerrado el conjunto de casos y modelos. La comparación queda identificada como línea futura y no se presenta como resultado del trabajo.
+
+Por último, el calendario disponible obligó a separar el cierre técnico de la redacción final. El código se cerró el 22 de septiembre con 84 pruebas superadas y 23 casos verificados. A partir de ese momento se evitó incorporar nuevas funciones y se priorizó la consolidación de la evidencia, la redacción de la memoria y la preparación de la entrega prevista para el 25 de septiembre. Esta decisión reduce el riesgo de introducir cambios tardíos que invaliden las ejecuciones ya archivadas.
+
+
+\section{Metodología experimental adoptada}
+
+La metodología experimental se diseñó para evaluar el sistema completo, desde la recepción de una petición en lenguaje natural hasta la obtención de una \textit{RFQ} estructurada o de un rechazo justificado. La unidad de análisis fue cada caso de prueba completo. Por tanto, una ejecución se consideró correcta cuando el sistema clasificó adecuadamente la petición y produjo el resultado esperado, incluida la identificación correcta de solicitudes no valorables o de productos no soportados. En estos últimos solo se evalúa la clasificación, ya que el flujo se detiene en el orquestador antes de extraer los términos de la operación.
+
+El conjunto definitivo estuvo formado por 23 casos distribuidos en cinco familias: \texttt{cotizacion}, con 7 casos; \texttt{valoracion}, con 5; \texttt{jerga}, con 3; \texttt{no\_valorables}, con 3; y \texttt{no\_soportados}, con 5. La familia de cotización contiene peticiones de precio en las que el tipo fijo está ausente porque constituye la incógnita que debe resolver el motor de valoración. Los casos de valoración describen operaciones ya contratadas e incluyen el tipo pactado. A estas dos familias se añadieron peticiones expresadas mediante jerga de mesa, solicitudes no valorables por falta de información o incoherencia y productos que quedan fuera del alcance del sistema. Once casos proceden de ejemplos propuestos por el tutor y los doce restantes fueron elaborados específicamente para ampliar la cobertura de la evaluación.
+
+Cada caso incluye una petición en lenguaje natural junto con el resultado esperado. En los casos que deben producir una \textit{RFQ}, o que deben rechazarse por falta de información o incoherencia, ese resultado es una referencia estructurada con los términos esperados. En los productos fuera de alcance basta con la clasificación esperada, porque el flujo se detiene antes de la extracción y no hay términos que comparar. Las referencias estructuradas se generaron a partir de una definición explícita de sus términos económicos, en lugar de redactar manualmente toda la representación final. Este procedimiento reduce las inconsistencias entre casos y facilita la actualización controlada de las referencias cuando cambia el esquema. Antes de ejecutar una tanda, el conjunto completo se somete a comprobaciones deterministas destinadas a verificar su coherencia interna.
+
+Los casos evalúan tanto expresiones directas como situaciones que requieren interpretación. Entre ellas se encuentran las fechas relativas, los inicios diferidos, la notación abreviada de los plazos, la deducción de la divisa a partir del índice, la dirección de una cobertura, los periodos no regulares y las convenciones no estándar expresamente solicitadas. También se incluyen combinaciones incompatibles y productos cercanos al alcance para comprobar que el sistema no genere una \textit{RFQ} cuando la petición deba rechazarse.
+
+La ejecución de cada caso sigue el mismo flujo. El orquestador clasifica primero la petición como \textit{IRS} o producto no soportado. Si corresponde a un \textit{IRS}, el especialista extrae los siete campos obligatorios, deriva las convenciones aplicables y calcula los calendarios de pago. A continuación, el validador determinista comprueba la integridad y la coherencia de la operación. Cuando detecta un error corregible de extracción, devuelve el diagnóstico al especialista y permite una nueva pasada, hasta un máximo de cinco intentos. Solo después de obtener una operación válida se realiza el mapeo y la serialización de la \textit{RFQ}.
+
+La evaluación diferencia los errores del modelo de los fallos del proveedor. Una respuesta que incumple el contrato de salida, no puede analizarse o contiene un valor incorrecto se considera un fallo del caso. En cambio, una interrupción externa, como un error de red o de servicio, se registra por separado y no se interpreta como evidencia sobre la capacidad del modelo. Esta distinción evita mejorar artificialmente los resultados mediante la exclusión de respuestas mal formadas y, al mismo tiempo, impide atribuir al modelo errores que no dependen de su comportamiento.
+
+La comparación se realizó sobre seis modelos pertenecientes a dos proveedores. Todos recibieron los mismos 23 casos y las mismas instrucciones en la configuración final. La temperatura no se utilizó como variable experimental porque las interfaces actuales de los proveedores no permiten configurarla para los modelos evaluados. En consecuencia, la comparabilidad se apoyó en mantener constantes los casos, las instrucciones, el esquema y el procedimiento de evaluación.
+
+Las métricas se organizaron en varios niveles. En primer lugar, la clasificación del producto se evaluó sobre los 23 casos. En segundo lugar, se comprobó el resultado de la validación en los casos que alcanzaron esa etapa. En aquellos que debían producir una \textit{RFQ}, se comparó la salida completa con su referencia para determinar si existía coincidencia exacta y se analizaron individualmente los campos para distinguir coincidencias, valores incorrectos, omisiones e información añadida sin respaldo. Por tanto, la coincidencia exacta y la comparación por campos se calculan sobre un subconjunto menor que el conjunto completo, ya que los productos no soportados se detienen en la clasificación y no generan términos financieros evaluables. Esta evaluación por niveles permite localizar en qué etapa del flujo se produce cada error.
+
+También se registraron la latencia, el consumo de tokens y el coste de las llamadas. El coste se calculó a partir de los tokens efectivamente consumidos y de las tarifas verificadas para cada modelo, considerando cuando correspondía los tokens de entrada servidos desde caché. Como los costes calculados se almacenan junto con cada llamada, se conservaron también los recuentos de tokens para poder recalcularlos si una tarifa se corrige posteriormente.
+
+Cada conjunto de ejecuciones se agrupó mediante un identificador de tanda. Junto con este identificador se conservaron el modelo, el proveedor, las salidas, los resultados de validación, las métricas y la configuración relevante. Las bases de datos de las tandas se archivaron y versionaron como evidencia reproducible. Esta separación impide combinar inadvertidamente resultados obtenidos con instrucciones, esquemas o casos de referencia diferentes.
+
+El proceso experimental no se limitó a ejecutar modelos y comparar resultados. Cuando apareció un fallo sistemático, se revisaron primero la instrucción, la información proporcionada a cada componente y el caso de referencia. Esta precaución fue necesaria porque una medición estable puede seguir siendo incorrecta si el instrumento contiene un defecto. Las correcciones realizadas durante el desarrollo se conservaron en tandas separadas, evitando mezclar resultados anteriores y posteriores a un cambio.
+
+La Figura~\ref{fig:procedimiento_experimental} resume el procedimiento seguido desde la preparación de los casos hasta el archivo y análisis de cada tanda.
+
+\begin{figure}[H]
+    \centering
+    \fbox{
+        \begin{minipage}{0.82\textwidth}
+            \centering
+            \textbf{23 casos distribuidos en cinco familias}\\[5pt]
+            $\downarrow$\\[5pt]
+            \textbf{Configuración común para cada modelo}\\
+            {\small Mismos casos, instrucciones, esquema y procedimiento}\\[5pt]
+            $\downarrow$\\[5pt]
+            \textbf{Ejecución del flujo completo}\\
+            {\small Clasificación, extracción, validación y serialización}\\[5pt]
+            $\downarrow$\\[5pt]
+            \textbf{Comparación con el resultado esperado}\\
+            {\small Clasificación, validación, RFQ exacta y campos aplicables}\\[5pt]
+            $\downarrow$\\[5pt]
+            \textbf{Registro de métricas}\\
+            {\small Acierto, latencia, tokens y coste}\\[5pt]
+            $\downarrow$\\[5pt]
+            \textbf{Archivo de la tanda y análisis}
+        \end{minipage}
+    }
+    \caption[Procedimiento experimental]{Procedimiento seguido para ejecutar, evaluar y archivar cada tanda experimental}
+    \label{fig:procedimiento_experimental}
+    \floatfoot{Fuente: elaboración propia.}
+\end{figure}
+
+La metodología adoptada permite comparar los modelos bajo condiciones comunes y conservar la evidencia necesaria para reconstruir cada medición. El capítulo 9 desarrolla formalmente el diseño experimental, los casos, las métricas, el tratamiento de la variabilidad, la medición de coste y latencia y las amenazas a la validez.

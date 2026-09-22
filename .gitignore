@@ -2,3 +2,15 @@
 notas*.txt
 .venv/
 __pycache__/
+
+# Articulos y libros consultados. Quedan fuera del repositorio porque son obra
+# de terceros y este repositorio es publico: redistribuirlos seria difundirlos
+# sin licencia. Las referencias viven en docs/Overleaf/referencias.bib, con su
+# DOI o su URL para que cualquiera pueda localizar la fuente original.
+Archivos bibliografia/
+*.pdf
+
+# Volcados de terminal guardados al vuelo mientras se trabajaba. El registro de
+# los experimentos, que es lo que hay que conservar, esta en
+# rfq-agents/docs/REGISTRO_EXPERIMENTOS.md.
+salida por terminal*.txt
