@@ -56,18 +56,25 @@ controlada: mismos casos, mismo modelo, una frase de diferencia.
 
 ## 3. Un evaluador puede ser estable, reproducible y engañoso
 
-Seis defectos de instrumentación a lo largo del trabajo produjeron cifras
-internamente consistentes y falsas. En todos, **una diferencia de tratamiento
+**Siete defectos de instrumentación** a lo largo del trabajo produjeron cifras
+internamente consistentes y falsas. En casi todos, **una diferencia de tratamiento
 entre las dos ramas de una comparación se leyó como un fallo del modelo**:
 
-| Defecto | Síntoma | Causa real |
-|---|---|---|
-| Guardarraíl ambiguo sobre índices a un día | 2 falsos negativos | `SOFR 3M` es la pata flotante de un vanilla, no un OIS |
-| Calendarios no enviados al agente proto | `MISMATCH` sistemático | Se comparaba contra una referencia que sí los contenía |
-| «The root message is `RFQ`» | `UNPARSEABLE` | En protobuf de texto el mensaje raíz es implícito |
-| Diferencial por omisión aplicado solo en el mapeador | 1 alucinación por caso | El agente recibía una entrada distinta |
-| Diferencial por omisión no aplicado al caso dorado | 1 alucinación por caso | Misma asimetría, en la otra rama |
-| Caso de fechas contradictorias clasificado como producto no soportado | fallo del orquestador | Es un IRS legítimo con datos incoherentes |
+| # | Defecto | Síntoma | Causa real |
+|---|---|---|---|
+| 1 | Guardarraíl ambiguo sobre índices a un día | 2 falsos negativos | `SOFR 3M` es la pata flotante de un vanilla, no un OIS |
+| 2 | Calendarios no enviados al agente proto | `MISMATCH` sistemático | Se comparaba contra una referencia que sí los contenía |
+| 3 | «The root message is `RFQ`» | `UNPARSEABLE` | En protobuf de texto el mensaje raíz es implícito |
+| 4 | Diferencial por omisión aplicado solo en el mapeador | 1 alucinación por caso | El agente recibía una entrada distinta |
+| 5 | Diferencial por omisión no aplicado al caso dorado | 1 alucinación por caso | Misma asimetría, en la otra rama |
+| 6 | Caso de fechas contradictorias clasificado como producto no soportado | fallo aparente del orquestador | Es un IRS legítimo con datos incoherentes: lo detiene el validador, no la puerta de entrada |
+| 7 | Tarifa corregida después de medir una tanda | coste de `sonnet` inflado un 50 % | El coste se calcula en la llamada y se guarda; corregir el fichero de tarifas no corrige lo ya medido |
+
+El séptimo es de otra clase y conviene señalarlo aparte: **no afecta a la medición
+de acierto sino a la de coste**, y su causa no es una asimetría entre ramas sino
+que una cifra derivada se persiste en lugar de recalcularse. Se resolvió con
+`tools/recompute_costs.py`, que la rehace desde los tokens registrados: son un
+hecho de la ejecución y no cambian cuando cambia una tarifa.
 
 **La tesis:** cuatro tandas consecutivas arrojaron 0 % de fidelidad de
 serialización con plena consistencia interna. Ninguna cantidad de repeticiones ni
@@ -97,23 +104,35 @@ cuarenta líneas produce en microsegundos y sin coste.
 
 ## 5. El bucle de autocorrección solo aporta cuando la especificación es imprecisa
 
-| Condición | Casos rescatados por el bucle |
-|---|---|
-| Instrucción ambigua | 3 |
-| Instrucción corregida | **0** |
+| Condición | Activaciones | Casos rescatados |
+|---|---|---|
+| A, instrucción ambigua, primera tanda | 4 | **3** |
+| A, instrucción ambigua, segunda tanda | 1 | 0 |
+| B, instrucción corregida | 1 | 0 |
+| B, instrucción corregida, Anthropic | **0** | — |
 
-Con la instrucción corregida, `terra` y `sol` resolvieron los veintitrés casos en
-la primera pasada. La única activación restante, en `luna`, **no logró corregir el
-caso**: el error estaba en la clasificación de producto, y el bucle solo reintenta
-la extracción.
+**El mecanismo funciona:** con la instrucción ambigua rescató tres casos que sin él
+habrían fallado —`eur_no_estandar_3m` y `pay_5y_50m_spot` en `luna`,
+`es_fecha_explicita_10y` en `terra`—, resolviéndolos en la segunda pasada a partir
+del diagnóstico del validador.
 
-**La tesis:** un sistema con especificación cuidada paga latencia por un mecanismo
-que no llega a ejercitar. Su valor es una red de seguridad frente a instrucciones
-imperfectas, no una mejora del rendimiento.
+**Y su valor depende por completo de la calidad de la instrucción:** con la
+instrucción corregida no rescató ninguno, y los tres modelos de Anthropic no lo
+activaron ni una vez.
 
-**Limitación de diseño a declarar:** el bucle corrige la extracción, no la
-clasificación. Los falsos negativos del orquestador son exactamente el caso que no
-puede rescatar.
+**La tesis:** el bucle es una red de seguridad frente a especificaciones
+imperfectas, no una mejora del rendimiento. Un sistema con la especificación
+cuidada paga su latencia sin recibir nada a cambio. La disyuntiva hay que
+declararla, porque la conclusión no es «el bucle sobra» sino «el bucle compensa
+exactamente en la medida en que la instrucción sea imprecisa», y eso es difícil de
+saber por adelantado.
+
+**Limitación de diseño a declarar.** La única activación que queda con la
+instrucción corregida es el caso `eur_contra_sofr` en `luna`, y aparece en **las
+tres tandas sin rescatarse nunca**. El error está en la clasificación de producto,
+y el bucle solo reintenta la extracción: la clasificación ocurre en el orquestador,
+antes de que el bucle exista. Es el caso que no puede corregir por diseño, y señala
+la extensión natural del mecanismo como trabajo futuro.
 
 ---
 

@@ -103,7 +103,7 @@ En resumen:
 | 2 | La literalidad de un modelo es una propiedad que se paga |
 | 3 | Un evaluador puede ser estable, reproducible y engañoso |
 | 4 | Un LLM serializa protobuf anidado con fidelidad total |
-| 5 | El bucle de autocorrección solo aporta si la especificación es imprecisa |
+| 5 | El bucle rescató 3 casos con instrucción ambigua y 0 con instrucción corregida |
 | 6 | El cese del LIBOR cambió la estructura del producto, no solo el índice |
 | 7 | El precio de lista no predice el coste de la tarea |
 | 8 | Un modelo puede comprender la tarea y fallar el contrato de salida |
@@ -112,7 +112,7 @@ En resumen:
 
 **Los tres más originales, y los que yo llevaría a las conclusiones:**
 
-- **El 3.** Seis defectos de instrumentación produjeron cifras internamente
+- **El 3.** **Siete** defectos de instrumentación produjeron cifras internamente
   consistentes y falsas. Cuatro tandas consecutivas dieron 0 % de fidelidad de
   serialización con plena coherencia, y ninguna cantidad de repeticiones lo habría
   revelado porque el defecto estaba en la referencia, no en la varianza.
