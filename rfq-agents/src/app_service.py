@@ -20,7 +20,7 @@ class ProtoAgentOutcome:
     """Result of the RFQ proto agent, which is measured but never trusted.
 
     The deterministic mapper produces the RFQ the system actually emits. This
-    agent runs alongside it and its output is compared, so that "can an LLM
+    agent runs after it and its output is compared, so that "can an LLM
     serialise correctly against a schema it is given?" becomes a measurement
     instead of an assumption. A mismatch is a datapoint, not a failure.
     """

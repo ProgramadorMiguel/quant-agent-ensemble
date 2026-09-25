@@ -1,0 +1,315 @@
+\chapter{Metodología experimental}
+\label{cap:metodologia_experimental}
+
+Este capítulo explica cómo se evaluó la solución. La unidad principal de análisis es el caso de prueba completo, desde la clasificación hasta el resultado esperado de su recorrido. Se describen el diseño controlado, la batería, los modelos, las métricas y las limitaciones del experimento. Los resultados se reservan para el capítulo 9.
+
+\section{Diseño experimental}
+\label{sec:diseno_experimental}
+
+El experimento compara seis modelos sobre un conjunto fijo de 23 casos. Todos recibieron las mismas peticiones, instrucciones, esquema, fecha de referencia y reglas deterministas. Durante cada tanda se sustituyó el modelo utilizado por los tres agentes de lenguaje; el validador, el mapeador y el procedimiento de evaluación permanecieron sin cambios.
+
+Cada combinación de modelo y caso produce una ejecución. Las 23 ejecuciones de un modelo forman una tanda identificada mediante \texttt{batch\_id}. La comparación final utiliza una repetición por caso. Las tandas previas se conservaron para estudiar cambios y estabilidad, pero no se mezclaron con la comparación final cuando diferían las instrucciones, referencias o versiones.
+
+El flujo aplicable depende del caso. Los productos no soportados deben detenerse tras la clasificación con estado \texttt{NOT\_RUN}. Los \textit{IRS} avanzan a extracción y validación; solo los válidos llegan al mapeador y al agente proto experimental. Las respuestas mal formadas cuentan como fallos del modelo, mientras que una llamada sin respuesta por red, autenticación o disponibilidad se registra como error externo y se excluye del agregado de capacidad.
+
+La Figura~\ref{fig:procedimiento_experimental} resume el procedimiento.
+
+\begin{figure}[H]
+    \centering
+    \fbox{
+        \begin{minipage}{0.82\textwidth}
+            \centering
+            \textbf{23 casos y referencias comprobadas}\\[4pt]
+            $\downarrow$\\[4pt]
+            \textbf{Configuración común para cada modelo}\\
+            {\small Mismas instrucciones, esquema y fecha de referencia}\\[4pt]
+            $\downarrow$\\[4pt]
+            \textbf{Ejecución del recorrido aplicable}\\
+            {\small Clasificación, extracción, validación, mapeo y agente proto}\\[4pt]
+            $\downarrow$\\[4pt]
+            \textbf{Comparación con la referencia}\\[4pt]
+            $\downarrow$\\[4pt]
+            \textbf{Registro de acierto, campos, latencia, tokens y coste}
+        \end{minipage}
+    }
+    \caption[Procedimiento experimental]{Procedimiento aplicado a cada combinación de modelo y caso}
+    \label{fig:procedimiento_experimental}
+    \floatfoot{Fuente: elaboración propia.}
+\end{figure}
+
+El diseño es pareado porque todos los modelos se evalúan sobre las mismas peticiones. Esta estructura permite comparar en qué casos discrepan y no solo sus porcentajes globales.
+
+\section{Casos de prueba}
+\label{sec:casos_prueba}
+
+Los 23 casos fueron elaborados por el autor a partir de las pautas del tutor sobre campos obligatorios y límites del alcance. Se distribuyen en cinco familias para comprobar entradas válidas, lenguaje abreviado, información insuficiente, contradicciones y productos ajenos al sistema.
+
+La fecha de referencia se fijó en el lunes 21 de septiembre de 2026. \textit{Spot} se resolvió como el 23 de septiembre, tras sumar dos días hábiles y omitir únicamente fines de semana; «el próximo lunes», como el 28 de septiembre. Esta decisión impide que las referencias cambien con el día de ejecución.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Familias de casos utilizadas en la evaluación}
+\label{tab:familias_casos}
+\begin{tabular}{|P{2.4cm}|P{1.1cm}|P{5.0cm}|P{4.3cm}|}
+\hline
+\textbf{Familia} & \textbf{N.o} & \textbf{Qué evalúa} & \textbf{Resultado esperado} \\
+\hline
+Cotización & 7 & Tipo par, fechas relativas y explícitas, estructura \texttt{2Y1Y}, cobertura y convenciones derivadas o enunciadas. & \textit{IRS} válido con \texttt{PAR\_RATE\_QUOTE} y sin tipo fijo. \\
+\hline
+Jerga & 3 & Abreviaturas como \texttt{50m}, \texttt{250k}, \texttt{pay}, \texttt{rec fixed} y puntos básicos. & Términos normalizados sin alterar el significado. \\
+\hline
+Valoración & 5 & Operaciones existentes, posiciones pagadoras y receptoras, SOFR derivado, periodo roto, diferencial y convención alternativa. & \textit{IRS} válido con \texttt{VALUATION} y tipo fijo. \\
+\hline
+No valorables & 3 & Nocional o dirección ausentes y vencimiento anterior al inicio. & Clasificación \texttt{IRS} y validación \texttt{INVALID}. \\
+\hline
+No soportados & 5 & \textit{Swaption}, \textit{basis swap}, GBP/SONIA, seis meses y EUR contra SOFR. & \texttt{UNSUPPORTED} y validación \texttt{NOT\_RUN}. \\
+\hline
+\textbf{Total} & \textbf{23} & Recorridos válidos y negativos del sistema. & Resultado correcto para cada etapa aplicable. \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia.}
+\end{table}
+
+La batería incluye español, inglés y jerga; fechas absolutas y relativas; EUR y USD; IBOR y SOFR compuesto; y convenciones estándar o expresamente alternativas. Dos casos merecen precisión. \texttt{usd\_sofr\_ois\_3y} no menciona SOFR: evalúa la derivación de la convención OIS desde la divisa. \texttt{eur\_periodo\_roto} contiene un último periodo fijo de seis meses y, de forma separada, un diferencial de 25 puntos básicos en la pata flotante.
+
+El caso \texttt{eur\_receiver\_1y} utiliza la rama EUR de hasta un año. El generador calcula la duración como días divididos entre 365,25 y obtiene aproximadamente 0,9993 años, por lo que la referencia usa EURIBOR 3M trimestral. Esto no contradice el alcance: las fechas definen un vencimiento nominal de un año, mientras que el caso no soportado dura seis meses.
+
+Los 18 casos que alcanzan la extracción disponen de una referencia \textit{textproto}. Se generan programáticamente desde sus términos económicos para reducir errores manuales; \texttt{fechas\_desordenadas} se define de forma explícita porque no puede construirse un calendario sobre un plazo negativo. Los cinco productos no soportados solo contienen la etiqueta esperada. Antes de cada tanda, \texttt{check\_cases.py} analiza las referencias estructuradas y comprueba las etiquetas.
+
+\section{Modelos comparados}
+\label{sec:modelos_comparados}
+
+La comparación incluye tres modelos de OpenAI y tres de Anthropic con diferentes tarifas. El objetivo no es establecer una clasificación general, sino medir su comportamiento dentro de la arquitectura y la tarea definidas. El mismo modelo se utilizó en los tres agentes durante cada tanda.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Modelos y tarifas publicadas utilizadas en la comparación}
+\label{tab:modelos_comparados}
+\begin{tabular}{|P{3.6cm}|P{2.0cm}|P{2.3cm}|P{2.3cm}|P{2.3cm}|}
+\hline
+\textbf{Modelo} & \textbf{Proveedor} & \textbf{Entrada} & \textbf{Entrada en caché} & \textbf{Salida} \\
+\hline
+\texttt{gpt-5.6-luna} & OpenAI & 0,20 \$ & 0,02 \$ & 1,20 \$ \\
+\hline
+\texttt{gpt-5.6-terra} & OpenAI & 2,00 \$ & 0,20 \$ & 12,00 \$ \\
+\hline
+\texttt{gpt-5.6-sol} & OpenAI & 4,00 \$ & 0,40 \$ & 20,00 \$ \\
+\hline
+\texttt{claude-haiku-4-5} & Anthropic & 1,00 \$ & 0,10 \$ & 5,00 \$ \\
+\hline
+\texttt{claude-sonnet-5} & Anthropic & 2,00 \$ & 0,20 \$ & 10,00 \$ \\
+\hline
+\texttt{claude-opus-5} & Anthropic & 5,00 \$ & 0,50 \$ & 25,00 \$ \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: tarifas oficiales verificadas el 21 de septiembre de 2026, en dólares por millón de tokens, para procesamiento estándar y contexto corto \citep{openai2026pricing,anthropic2026pricing}. La tarifa de \texttt{gpt-5.6-sol} era promocional hasta el 21 de noviembre de 2026.}
+\end{table}
+
+La capa común mantuvo la tarea semántica y absorbió diferencias de interfaz. Anthropic exigía un máximo de salida, fijado en 8.192 tokens; OpenAI no recibió un límite equivalente. No se adaptaron las instrucciones a cada proveedor.
+
+No se incluyeron modelos anteriores de OpenAI en la comparación final porque sus tandas correspondían a versiones previas y sus tarifas ya no figuraban en la página oficial. Mezclarlos habría impedido una comparación técnica y económica verificable.
+
+\section{Métricas de evaluación}
+\label{sec:metricas_evaluacion}
+
+La unidad principal es el caso. Si existen varias repeticiones, un caso solo cuenta como acierto cuando todas cumplen el criterio. Las repeticiones miden estabilidad, pero no aumentan el tamaño muestral.
+
+La clasificación compara la etiqueta del orquestador con \texttt{IRS} o \texttt{UNSUPPORTED}. El estado de validación se evalúa sobre los 23 casos y puede ser \texttt{VALID}, \texttt{INVALID} o \texttt{NOT\_RUN}. Rechazar correctamente un producto no soportado puntúa como estado correcto.
+
+Cuando existen campos puntuables, los submensajes se aplanan en rutas como \texttt{fixed\_leg.day\_count}. Cada ruta recibe una de las categorías de la Tabla~\ref{tab:resultados_campo}.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Clasificación de los resultados por campo}
+\label{tab:resultados_campo}
+\begin{tabular}{|P{3.0cm}|P{10.3cm}|}
+\hline
+\textbf{Resultado} & \textbf{Criterio} \\
+\hline
+\texttt{MATCH} & El valor coincide con la referencia, o ambos dejan correctamente vacío el campo. \\
+\hline
+\texttt{WRONG} & Existe un valor, pero es distinto del esperado. \\
+\hline
+\texttt{MISSING} & La referencia contiene un valor y la salida lo omite. \\
+\hline
+\texttt{HALLUCINATED} & La salida añade un valor que no aparece en la referencia. \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia.}
+\end{table}
+
+La exactitud del caso \(i\) es:
+
+\begin{equation}
+A_{\text{campos},i}
+=
+\frac{N_{\texttt{MATCH},i}}
+{N_{\texttt{MATCH},i}+N_{\texttt{WRONG},i}+N_{\texttt{MISSING},i}+N_{\texttt{HALLUCINATED},i}}.
+\end{equation}
+
+La exactitud del modelo es la macromedia de los casos con campos puntuables. Un producto no soportado correctamente rechazado queda fuera; si el modelo lo acepta y genera términos, entra con exactitud cero porque la referencia está vacía. No se calcula un intervalo de Wilson sobre campos, ya que los términos de una operación están correlacionados.
+
+La coincidencia exacta se calcula sobre los 23 casos y exige que \texttt{matched\_fields == total\_fields}. En un rechazo correcto ambos valores son cero. Esta definición tiene una limitación: una respuesta mal formada ante un producto no soportado también puede comparar dos conjuntos vacíos y contar como exacta aunque falle clasificación y validación. Por ello, esta métrica se interpreta junto con las demás.
+
+La fidelidad proto compara la salida del agente con la \textit{RFQ} determinista. Sus estados son \texttt{MATCH}, \texttt{MISMATCH}, \texttt{UNPARSEABLE} y \texttt{NOT\_RUN}. Su denominador son las ejecuciones con respuesta evaluable:
+
+\begin{equation}
+F_{\text{proto}}
+=
+\frac{N_{\texttt{MATCH}}}
+{N_{\texttt{MATCH}}+N_{\texttt{MISMATCH}}+N_{\texttt{UNPARSEABLE}}}.
+\end{equation}
+
+Las tasas de clasificación, validación, coincidencia exacta, familia y fidelidad proto se acompañan de intervalos de Wilson al 95\,\%. Para \(x\) aciertos sobre \(n\) observaciones:
+
+\begin{equation}
+IC_{\text{Wilson}}
+=
+\frac{\hat p+\frac{z^2}{2n}\pm z\sqrt{\frac{\hat p(1-\hat p)}{n}+\frac{z^2}{4n^2}}}{1+\frac{z^2}{n}},
+\qquad \hat p=\frac{x}{n},\quad z=1{,}96.
+\end{equation}
+
+En las métricas por caso, \(n\) no se multiplica por las repeticiones. La fidelidad proto utiliza ejecuciones evaluables. La exactitud por campo queda sin intervalo.
+
+La prueba exacta bilateral de McNemar compara el estado de validación de dos modelos sobre los mismos casos. Solo informan los pares discordantes. Con \(\alpha=0{,}05\), hacen falta al menos seis discordancias para que el contraste pueda alcanzar significación; por debajo de ese umbral se declara falta de potencia, no equivalencia.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Métricas utilizadas en la evaluación}
+\label{tab:metricas_evaluacion}
+\begin{tabular}{|P{3.0cm}|P{3.4cm}|P{6.8cm}|}
+\hline
+\textbf{Métrica} & \textbf{Unidad} & \textbf{Pregunta} \\
+\hline
+Clasificación correcta & 23 casos & ¿Se admite o rechaza el producto correctamente? \\
+\hline
+Validación correcta & 23 casos & ¿El recorrido termina como \texttt{VALID}, \texttt{INVALID} o \texttt{NOT\_RUN} según la referencia? \\
+\hline
+Exactitud por campo & Casos con campos puntuables & ¿Qué proporción de términos coincide? \\
+\hline
+Coincidencia exacta & 23 casos & ¿Existe alguna discrepancia en la comparación de campos? \\
+\hline
+Fidelidad proto & Ejecuciones con respuesta evaluable & ¿El agente reproduce la serialización determinista? \\
+\hline
+McNemar & Casos compartidos por cada par & ¿Las discordancias de validación favorecen sistemáticamente a un modelo? \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia.}
+\end{table}
+
+Las respuestas fuera del contrato cuentan como fallos del modelo. Los errores externos sin respuesta se conservan en la telemetría y se excluyen de los agregados de capacidad.
+
+\section{Tratamiento de la variabilidad entre ejecuciones}
+\label{sec:variabilidad_ejecuciones}
+
+La comparación mantuvo constantes casos, fecha, esquema, instrucciones y reglas. Cada tanda se aisló mediante \texttt{batch\_id}; cada llamada guardó además una huella de sus instrucciones efectivas. Así puede comprobarse si dos tandas utilizaron la misma especificación.
+
+Cada tanda final empleó una repetición por caso. Los modelos de OpenAI se ejecutaron además en tres tandas comparables, analizadas por separado porque varias respuestas a la misma petición están correlacionadas. Estas mediciones permitieron identificar comportamientos persistentes y variables sin inflar \(n\).
+
+El evaluador admite repeticiones internas mediante \texttt{--repetitions}. La estabilidad compara la categoría de cada campo, no su valor literal: dos valores erróneos distintos pueden compartir la categoría \texttt{WRONG}. Las respuestas originales se conservan para revisar diferencias que esta firma no capture.
+
+La temperatura no pudo utilizarse como variable de control. OpenAI rechazó el valor cero mediante HTTP 400 y Anthropic lo rechazó localmente antes de la llamada; después el cliente llamó sin el parámetro. En consecuencia, repetir la configuración no garantiza una salida idéntica.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Tratamiento de las principales fuentes de variación}
+\label{tab:tratamiento_variabilidad}
+\begin{tabular}{|P{3.8cm}|P{4.3cm}|P{5.2cm}|}
+\hline
+\textbf{Fuente} & \textbf{Riesgo} & \textbf{Tratamiento} \\
+\hline
+Generación del modelo & Respuestas distintas ante la misma petición. & Conservación de salidas y comparación entre tandas equivalentes. \\
+\hline
+Fecha relativa & Referencias distintas según el día. & Fecha fija: 21 de septiembre de 2026. \\
+\hline
+Cambio de instrucciones & Mezcla de condiciones incompatibles. & \texttt{batch\_id} y huella de las instrucciones. \\
+\hline
+Repeticiones correlacionadas & Aumento artificial del tamaño muestral. & Agregación por caso; las repeticiones no aumentan \(n\). \\
+\hline
+Temperatura no configurable & Imposibilidad de fijar o barrer el parámetro. & Llamada sin temperatura y declaración de la limitación. \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia.}
+\end{table}
+
+\section{Medición de coste y latencia}
+\label{sec:coste_latencia}
+
+El coste y la latencia se miden extremo a extremo para cada petición. El cronómetro incluye las llamadas, posibles reintentos, validación, mapeo y agente proto. La telemetría asocia todas las llamadas mediante \texttt{run\_id}.
+
+El coste de una llamada distingue entrada a precio completo, entrada en caché y salida:
+
+\begin{equation}
+C_{\text{llamada}}
+=
+\frac{\max(T_{\text{entrada}}-T_{\text{caché}},0)P_{\text{entrada}}
++T_{\text{caché}}P_{\text{caché}}+T_{\text{salida}}P_{\text{salida}}}{10^6}.
+\end{equation}
+
+Si el proveedor no informa de caché, toda la entrada se valora a precio completo. OpenAI incluye los tokens cacheados dentro del total de entrada; Anthropic los comunica por separado. La capa común normaliza ambas respuestas. Las tarifas verificadas se almacenan en \texttt{model\_costs.toml} \citep{openai2026pricing,anthropic2026pricing}.
+
+El coste por pasada suma el coste medio de los casos. El coste por caso válido divide esa cantidad entre los casos cuyo estado de validación coincide con la referencia, incluidos \texttt{VALID}, \texttt{INVALID} y \texttt{NOT\_RUN}. Si cambia una tarifa, \texttt{recompute\_costs.py} reconstruye los importes desde los tokens archivados.
+
+La latencia se presenta mediante p50 y p95. La primera describe el comportamiento habitual; la segunda, la cola de casos lentos. La comparación contiene una asimetría: en cada ejecución OpenAI realizó inicialmente una llamada HTTP rechazada por la temperatura, incluida en el cronómetro pero no registrada como llamada separada. Anthropic rechazó el parámetro localmente. Las latencias reflejan la implementación evaluada y deben interpretarse con esta diferencia.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Medidas de coste y latencia}
+\label{tab:medicion_coste_latencia}
+\begin{tabular}{|P{3.5cm}|P{9.5cm}|}
+\hline
+\textbf{Medida} & \textbf{Interpretación} \\
+\hline
+Coste por llamada & Tokens de entrada, caché y salida según la tarifa del modelo. \\
+\hline
+Coste por pasada & Gasto de ejecutar una vez la batería completa. \\
+\hline
+Coste por caso válido & Coste por pasada dividido entre estados de validación correctos. \\
+\hline
+Latencia p50 & Tiempo mediano extremo a extremo. \\
+\hline
+Latencia p95 & Umbral por debajo del cual queda el 95\,\% de las ejecuciones. \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia.}
+\end{table}
+
+\section{Amenazas a la validez}
+\label{sec:amenazas_validez}
+
+Las amenazas se agrupan en cuatro bloques para evitar repetir las limitaciones generales del capítulo 11.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Principales amenazas a la validez del experimento}
+\label{tab:amenazas_validez}
+\begin{tabular}{|P{3.2cm}|P{5.0cm}|P{5.0cm}|}
+\hline
+\textbf{Amenaza} & \textbf{Efecto} & \textbf{Tratamiento} \\
+\hline
+Batería creada durante el desarrollo & Puede favorecer el nivel absoluto y no representa todas las peticiones reales. & Mismos casos para todos los modelos y declaración del sesgo; se propone validación externa. \\
+\hline
+Muestra y repeticiones limitadas & Intervalos amplios y baja potencia en varios pares. & Wilson, McNemar exacto y ausencia de afirmaciones de equivalencia. \\
+\hline
+Instrumentación y métricas & Un sesgo sistemático puede producir cifras estables pero falsas. & Comprobación de referencias, telemetría original, separación de tandas y reconstrucción cuando procede. \\
+\hline
+Alcance y entorno & Un único producto, simplificaciones financieras y proveedores cambiantes. & Conclusiones limitadas a la batería, modelos, tarifas y fecha evaluados. \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia.}
+\end{table}
+
+Los 23 casos fueron elaborados por el autor y no permanecieron ocultos durante el desarrollo. La comparación relativa se mantiene porque todos los modelos reciben la misma batería, pero el nivel absoluto puede estar favorecido. La mayoría de contrastes de McNemar no reúne seis discordancias, por lo que la falta de significación indica falta de potencia y no igualdad.
+
+La instrumentación constituye una amenaza central. Durante el trabajo se identificaron ocho defectos que habían afectado a clasificación, fidelidad o coste. Los siete primeros se corrigieron en el código. El octavo se detectó tras el cierre técnico y la clasificación se reconstruyó desde las respuestas originales. Este antecedente muestra por qué una métrica estable no basta sin revisar entradas y referencias.
+
+El criterio estricto de formato mezcla en algunos casos comprensión y adherencia al contrato, aunque esta adherencia es necesaria en una cadena automática. La coincidencia exacta presenta además la limitación de los conjuntos vacíos explicada en 8.4. Por eso los resultados se interpretan mediante varias métricas y un análisis por etapa.
+
+La generalización queda limitada a \textit{IRS vanilla} en EUR y USD, sin calendarios de festivos, fechas de fijación, motor de valoración ni prueba operativa. Tampoco se comparó la red con una solución monolítica. Los proveedores pueden cambiar modelos y precios; las conclusiones económicas representan las tarifas verificadas el 21 de septiembre de 2026 y la promoción temporal de \texttt{gpt-5.6-sol}.

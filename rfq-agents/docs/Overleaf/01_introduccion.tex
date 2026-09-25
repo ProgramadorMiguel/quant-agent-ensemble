@@ -1,0 +1,137 @@
+\chapter{Introducción}
+\label{cap:introduccion}
+
+\section{Contexto del problema}
+\label{sec:contexto_problema}
+
+Los derivados financieros permiten gestionar riesgos asociados a variables como los tipos de interés o las divisas. Entre ellos, los \textit{Interest Rate Swaps} (\textit{IRS}) intercambian flujos calculados mediante un tipo fijo y otro variable sobre un nocional común. Antes de valorarlos, sus términos deben quedar representados de forma completa y coherente \citep{hull2021derivatives,ausin2025quantitative}.
+
+Las peticiones de cotización y valoración pueden llegar como texto libre, con abreviaturas, fechas relativas o expresiones propias de una mesa. Esta comunicación es flexible para las personas, pero no para un motor financiero, que necesita campos y relaciones explícitos. Una extracción incorrecta puede modificar la operación; completar un dato ausente puede crear una distinta de la solicitada. Los modelos estructurados reducen esta ambigüedad entre sistemas \citep{isda2023cdm}.
+
+Los modelos de lenguaje permiten interpretar distintas formulaciones, pero también pueden omitir términos, añadir valores no justificados o incumplir el formato. En finanzas, una respuesta plausible no basta: debe conservar la intención económica y superar controles de coherencia \citep{shah2023finllms,tam2024formatrestrictions}.
+
+\section{Motivación del trabajo}
+\label{sec:motivacion}
+
+La motivación del trabajo es estudiar una solución híbrida. Los modelos se reservan para interpretar lenguaje; el código valida las reglas que pueden expresarse de forma exacta y genera la salida final. Además, el sistema registra respuestas, consumo, coste y latencia para comparar modelos sobre la tarea completa y distinguir sus fallos de los defectos de las instrucciones o del evaluador.
+
+\section{Problema a resolver}
+\label{sec:problema_resolver}
+
+El problema tecnológico consiste en convertir una petición de cotización o valoración de \textit{IRS} en una \textit{RFQ} estructurada, completa y coherente. La entrada puede estar en español o inglés, utilizar jerga, expresar fechas relativas, omitir convenciones derivables o contener términos incompatibles.
+
+El sistema debe resolver cuatro cuestiones:
+
+\begin{enumerate}
+    \item identificar si el producto pertenece al alcance;
+    \item extraer los términos y asignarlos al nivel y a la pata correctos;
+    \item comprobar su completitud y coherencia financiera;
+    \item generar una \textit{RFQ} procesable o explicar por qué no puede emitirse.
+\end{enumerate}
+
+También debe distinguir una cotización a tipo par de una valoración. En la primera, el tipo fijo es la incógnita y debe estar ausente; en la segunda, forma parte de la operación contratada. El problema se considera resuelto cuando el sistema devuelve una \textit{RFQ} validada o un error comprensible, sin completar datos obligatorios mediante suposiciones.
+
+El trabajo se limita a \textit{IRS vanilla} en EUR y USD con vencimientos nominales de al menos un año. La salida no es el precio del derivado, sino una estructura preparada para un proceso posterior. El capítulo 4 formaliza este problema mediante requisitos verificables.
+
+\section{Objetivos}
+\label{sec:objetivos}
+
+El objetivo general es diseñar, implementar y evaluar un sistema que transforme peticiones de \textit{IRS} en lenguaje natural en una \textit{RFQ} estructurada y verificable.
+
+Los objetivos específicos son:
+
+\begin{enumerate}
+    \item delimitar el producto, los campos obligatorios y las convenciones derivables;
+    \item diseñar un esquema que represente los términos comunes y las dos patas;
+    \item separar interpretación, validación y emisión entre componentes especializados;
+    \item implementar la clasificación, extracción, normalización, autocorrección y mapeo;
+    \item impedir la emisión de operaciones incompletas, incoherentes o no soportadas;
+    \item construir casos verificables que incluyan entradas válidas y negativas;
+    \item comparar modelos de OpenAI y Anthropic bajo condiciones comunes;
+    \item medir clasificación, validación, campos, formato, coste y latencia;
+    \item conservar configuración y respuestas para poder auditar los resultados.
+\end{enumerate}
+
+La Tabla~\ref{tab:verificacion_objetivos} agrupa los criterios utilizados para evaluar su cumplimiento.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Criterios de verificación de los objetivos}
+\label{tab:verificacion_objetivos}
+\begin{tabular}{|P{4.4cm}|P{8.5cm}|}
+\hline
+\textbf{Objetivo} & \textbf{Criterio de verificación} \\
+\hline
+Definición financiera & Alcance, campos y convenciones documentados mediante requisitos explícitos. \\
+\hline
+Representación y arquitectura & Esquema de dos patas y responsabilidades separadas entre agentes y código. \\
+\hline
+Conversión y validación & \textit{RFQ} válida o error comprensible para cada recorrido evaluado. \\
+\hline
+Ausencia de suposiciones & Detección de campos ausentes y de valores no justificados. \\
+\hline
+Evaluación comparable & Misma batería, instrucciones, esquema y fecha para todos los modelos. \\
+\hline
+Medición y trazabilidad & Registro de respuestas, métricas, tokens, latencia, coste y configuración. \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia.}
+\end{table}
+
+\section{Alcance y limitaciones}
+\label{sec:alcance_limitaciones}
+
+El prototipo admite cotizaciones a tipo par y valoraciones de \textit{IRS vanilla} en EUR y USD. Representa propósito, nocional, divisa, dirección, fechas, patas, convenciones, curvas y calendarios. La entrada puede utilizar español, inglés, jerga y expresiones como \textit{spot}, «el próximo lunes» o \texttt{2Y1Y}. Las convenciones estándar se derivan cuando corresponde y las alternativas se respetan si la petición las enuncia.
+
+Quedan fuera otros productos y estructuras, como \textit{basis swaps}, operaciones entre divisas, \textit{swaptions}, nocionales variables o tipos escalonados; también otras divisas y vencimientos inferiores a un año. El sistema estructura y valida, pero no calcula precio ni riesgo ni se conecta con sistemas de contratación.
+
+El modelo omite calendarios de festivos y fechas de fijación independientes. La detección de convenciones expresadas utiliza un vocabulario cerrado. La evaluación emplea 23 casos elaborados durante el desarrollo y una ejecución final por modelo y caso. Estas limitaciones se detallan en los capítulos 8 y 11; aquí solo fijan hasta dónde alcanza el problema abordado.
+
+\section{Relación con las competencias del máster}
+\label{sec:competencias_master}
+
+El proyecto combina mercados financieros, ingeniería de software y análisis experimental, en línea con el programa del Máster Universitario en Tecnologías del Sector Financiero \citep{uc3m2026fintech}. La Tabla~\ref{tab:competencias_master} relaciona las competencias principales con evidencias del trabajo.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Competencias del máster aplicadas en el proyecto}
+\label{tab:competencias_master}
+\begin{tabular}{|P{1.3cm}|P{4.7cm}|P{7.0cm}|}
+\hline
+\textbf{Código} & \textbf{Competencia} & \textbf{Aplicación y evidencia} \\
+\hline
+CE1 & Conceptos de mercados financieros. & Diseño del \textit{IRS}, sus patas, propósitos, curvas y convenciones de EUR y USD. \\
+\hline
+CE2 & Evaluación de tecnologías aplicadas a finanzas. & Comparación de modelos, protobuf y componentes deterministas mediante acierto, coste y latencia. \\
+\hline
+CE3 & Desarrollo de software financiero. & Requisitos, arquitectura, implementación, pruebas y salida preparada para integración. \\
+\hline
+CE4 & Algoritmos y técnicas de mercados financieros. & Convenciones, calendarios y reglas financieras de validación. \\
+\hline
+CE5 & Almacenamiento, acceso y revisión de datos. & Telemetría en SQLite y reconstrucción de métricas desde bases archivadas. \\
+\hline
+CG2--CG4 & Diseño de software, integración de conocimientos y argumentación. & Solución multidisciplinar, planificación, alternativas, riesgos y evaluación crítica. \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia a partir de las competencias y del plan de estudios de la UC3M \citep{uc3m2026fintech}.}
+\end{table}
+
+Las competencias se aplican de forma conjunta. El conocimiento financiero define qué debe representar y validar el sistema; la ingeniería de software convierte esas reglas en una arquitectura ejecutable; y el análisis de datos permite comparar modelos y revisar el instrumento de evaluación. El proyecto no se limita a usar un LLM: desarrolla y evalúa una solución de software financiero completa.
+
+\section{Metodología general}
+\label{sec:metodologia_general}
+
+El trabajo siguió ciclos de definición, implementación, prueba y revisión. Primero se delimitó el producto y se contrastaron las convenciones. Después se diseñaron el esquema y la separación entre agentes y código. La implementación añadió validación, autocorrección, telemetría y soporte para dos proveedores.
+
+Las reglas deterministas se probaron de forma automatizada y las referencias se comprobaron antes de llamar a los modelos. Ante un fallo, se revisaron la claridad de la instrucción, la información recibida y el resultado esperado antes de atribuirlo al modelo. Esta práctica permitió detectar ocho defectos de instrumentación.
+
+La evaluación final aplicó 23 casos a seis modelos bajo condiciones comunes y midió clasificación, validación, exactitud, formato, coste y latencia. La planificación detallada se presenta en el capítulo 5 y el diseño experimental, en el capítulo 8.
+
+\section{Estructura del documento}
+\label{sec:estructura_documento}
+
+Tras esta introducción, el capítulo 2 presenta el marco teórico y el capítulo 3 revisa las alternativas existentes y la oportunidad de investigación. El capítulo 4 formaliza el problema y los requisitos; el 5 describe la planificación; y los capítulos 6 y 7 presentan, respectivamente, el diseño y la implementación.
+
+El capítulo 8 define la metodología experimental y el 9 analiza los resultados. El capítulo 10 estudia el presupuesto y el coste operativo. Por último, el capítulo 11 evalúa el cumplimiento de los objetivos, resume las aportaciones y delimita las limitaciones y líneas futuras.

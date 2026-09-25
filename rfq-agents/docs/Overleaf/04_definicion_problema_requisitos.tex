@@ -1,120 +1,76 @@
 \chapter{Definición del problema y requisitos}
+\label{cap:problema_requisitos}
 
-\section{Flujo actual de una petición de valoración}
+Este capítulo formaliza el problema introducido en el capítulo 1. Primero delimita el punto del flujo que se automatiza y clasifica sus principales dificultades. Después convierte esas necesidades en requisitos verificables y fija el alcance financiero de la solución.
 
-En los mercados de derivados, una petición de valoración (\textit{Request for Quote} o \textit{RFQ}) comienza habitualmente con la recepción de una solicitud en lenguaje no estructurado que describe la operación financiera que se desea cotizar o analizar. Esta comunicación puede transmitirse a través de canales no estandarizados, como el correo electrónico, las plataformas de mensajería financiera o los formularios internos, e incluye los términos económicos y las especificaciones contractuales necesarios para su posterior procesamiento \citep{hull2021derivatives,isda2023cdm}.
+\section{Flujo de una petición de valoración}
+\label{sec:flujo_actual_rfq}
 
-A partir de esta solicitud, la fase operativa crítica consiste en interpretar la intención del solicitante y traducirla a una representación formal y unívoca que pueda ser procesada por la infraestructura técnica de la entidad. En el ámbito de las permutas de tipos de interés (\textit{Interest Rate Swaps}, \textit{IRS}), este proceso de extracción exige identificar atributos fundamentales como la divisa, el nocional, la fecha de inicio (\textit{effective date}), la fecha de vencimiento (\textit{maturity date}), la estructura de las patas fija y flotante, las frecuencias de pago, las convenciones de recuento de días y el índice de referencia, como EURIBOR o SOFR \citep{hull2021derivatives}.
+Una petición de cotización o valoración comienza con una descripción de la operación y termina, fuera del alcance de este trabajo, en un motor financiero. Entre ambos extremos deben interpretarse los términos, representarlos y comprobar su coherencia. La estructura del producto y sus datos contractuales condicionan cualquier valoración posterior \citep{hull2021derivatives,isda2023cdm}.
 
-Una vez identificados estos componentes, la operación debe capturarse en un formato estructurado compatible con los sistemas internos de gestión de riesgos, registro y valoración. Este paso representa un posible cuello de botella operativo, ya que los sistemas de análisis cuantitativo no procesan descripciones en texto libre, sino modelos de datos en los que cada campo debe quedar definido de forma explícita y coherente \citep{isda2023cdm}.
-
-Tras la captura estructurada, el flujo incluye una fase de validación que verifica la integridad de los datos, la coherencia de las fechas y la compatibilidad de la estructura con las reglas operativas. Solo después de superar estos controles, la solicitud se deriva al motor de valoración, que aplica las curvas, los métodos de descuento y las convenciones de mercado necesarios para calcular el valor razonable (\textit{fair value}) o la métrica de riesgo solicitada. La Figura~\ref{fig:flujo_actual_rfq} resume este proceso desde la recepción de la petición hasta su valoración.
+La solución aborda la fase comprendida entre el lenguaje natural y la \textit{RFQ} validada:
 
 \begin{figure}[H]
     \centering
     \fbox{
-        \begin{minipage}{0.78\textwidth}
+        \begin{minipage}{0.8\textwidth}
             \centering
-            \textbf{1. Solicitud en lenguaje natural}\\
-            {\small Correo electrónico, mensajería financiera o formulario interno}\\[5pt]
-            $\downarrow$\\[5pt]
-            \textbf{2. Interpretación y extracción manual}\\
-            {\small Identificación de los términos económicos y contractuales}\\[5pt]
-            $\downarrow$\\[5pt]
-            \textbf{3. Captura en un formato estructurado}\\
-            {\small Representación explícita de los campos de la operación}\\[5pt]
-            $\downarrow$\\[5pt]
-            \textbf{4. Validación de la operación}\\
-            {\small Comprobación de integridad, coherencia y compatibilidad}\\[5pt]
-            $\downarrow$\\[5pt]
-            \textbf{5. Motor de valoración}\\
-            {\small Aplicación de curvas, convenciones y métodos de descuento}
+            \textbf{Petición en lenguaje natural}\\[4pt]
+            $\downarrow$\\[4pt]
+            \textbf{Identificación e interpretación del producto}\\[4pt]
+            $\downarrow$\\[4pt]
+            \textbf{Representación estructurada}\\[4pt]
+            $\downarrow$\\[4pt]
+            \textbf{Validación de integridad y coherencia}\\[4pt]
+            $\downarrow$\\[4pt]
+            \textbf{RFQ preparada para un motor de valoración}
         \end{minipage}
     }
-    \caption[Flujo actual de una petición de valoración]{Flujo actual de una petición de valoración desde el lenguaje natural hasta el motor de valoración}
+    \caption[Flujo de una petición financiera]{Fase del flujo financiero abordada por el trabajo}
     \label{fig:flujo_actual_rfq}
     \floatfoot{Fuente: elaboración propia.}
 \end{figure}
 
+El motor posterior no puede interpretar por sí mismo una frase, resolver una ambigüedad contractual ni decidir qué dato inventar si falta. Necesita una estructura cuyos términos estén presentes y sean compatibles. El problema tecnológico se sitúa, por tanto, en la traducción controlada entre ambas representaciones.
 
-    \section{Problemas detectados en la conversión de lenguaje natural a RFQ}
+\section{Problemas detectados en la conversión de lenguaje natural a RFQ}
+\label{sec:problemas_nl_rfq}
 
-    La conversión de una petición redactada en lenguaje natural a una \textit{RFQ} estructurada presenta dificultades que van más allá de la identificación de valores aislados. Para representar correctamente una operación, es necesario interpretar la intención financiera del solicitante, asociar cada elemento de la petición con el atributo correspondiente y mantener la coherencia entre todos los términos contractuales. La flexibilidad del lenguaje natural facilita la comunicación entre personas, pero también introduce ambigüedades que dificultan su procesamiento automático. Además, las restricciones aplicadas al formato de salida pueden afectar al comportamiento de los modelos de lenguaje y no garantizan por sí solas que el contenido generado sea correcto \citep{tam2024formatrestrictions}.
+La conversión exige más que reconocer entidades. Debe interpretar la intención, asignar cada término al nivel correcto y conservar las relaciones financieras. La Tabla~\ref{tab:problemas_nl_rfq} agrupa los problemas que debe resolver el sistema.
 
-    El primer problema es la variedad de formas con las que puede expresarse una misma operación. Dos solicitudes con el mismo significado financiero pueden utilizar distinta terminología, abreviaturas o estructuras sintácticas. Por ejemplo, la dirección de un \textit{IRS} puede indicarse mediante expresiones como ``pagar fijo'', ``recibir variable'' o sus equivalentes en inglés. Del mismo modo, el vencimiento puede comunicarse mediante una fecha concreta, un plazo relativo o una expresión abreviada. Estas variaciones deben interpretarse sin modificar el significado económico de la petición.
+\begin{table}[H]
+\centering
+\small
+\caption{Problemas en la conversión de lenguaje natural a una RFQ}
+\label{tab:problemas_nl_rfq}
+\begin{tabular}{|P{3.2cm}|P{5.0cm}|P{5.2cm}|}
+\hline
+\textbf{Problema} & \textbf{Manifestación} & \textbf{Riesgo} \\
+\hline
+Variación lingüística & Abreviaturas, idiomas, orden distinto y fechas relativas. & Asociar una expresión con el término equivocado. \\
+\hline
+Información incompleta & Falta de nocional, dirección u otro dato necesario. & Completar la operación mediante una suposición no autorizada. \\
+\hline
+Convenciones implícitas & Base, frecuencia, índice o curvas no enunciados. & No distinguir una derivación permitida de una invención. \\
+\hline
+Incoherencia & Fechas desordenadas o divisa e índice incompatibles. & Producir una estructura formalmente válida pero financieramente imposible. \\
+\hline
+Asignación estructural & Confusión entre términos comunes, pata fija y pata flotante. & Alterar el significado económico de la operación. \\
+\hline
+Formato de salida & Texto adicional o sintaxis no compatible con el esquema. & Impedir que el siguiente componente procese la respuesta. \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia.}
+\end{table}
 
-    Otro problema habitual es la ausencia de información necesaria para definir la operación. Una solicitud puede indicar la divisa, el nocional y el vencimiento, pero omitir atributos como la frecuencia de pago, la convención de recuento de días o el índice de referencia. Algunos términos pueden obtenerse a partir de convenciones de mercado asociadas al producto y a la divisa, mientras que otros deben ser proporcionados expresamente por el solicitante. Por tanto, resulta necesario distinguir entre la información que puede derivarse mediante una convención conocida y aquella cuya ausencia impide definir la operación de forma inequívoca.
+Los modelos de lenguaje pueden generar valores plausibles sin respaldo o incumplir un formato estricto, por lo que la estructura de salida no garantiza por sí sola la corrección \citep{bechard2024structuredrag,tam2024formatrestrictions}. En un \textit{IRS}, el riesgo aumenta porque las patas tienen convenciones y calendarios propios y porque los campos mantienen dependencias entre sí \citep[p.~59]{ausin2025quantitative}.
 
-    Esta cuestión es especialmente relevante en los \textit{IRS}, cuya representación requiere diferenciar la pata fija y la pata flotante. Cada una puede disponer de sus propias fechas de pago, frecuencia y convención de recuento de días. La pata flotante incorpora además un índice de referencia y la información necesaria para proyectar sus flujos. Estos elementos determinan la estructura financiera de la operación y condicionan su valoración posterior \citep{ausin2025quantitative}.
-
-    También pueden aparecer incoherencias entre atributos que, considerados de forma independiente, parecen válidos. La fecha de vencimiento debe ser posterior a la fecha de inicio, el nocional debe adoptar un valor admisible y las características de cada pata deben ser compatibles con la divisa y el índice de referencia. De forma similar, la dirección de la operación debe quedar expresada sin contradicciones entre la parte que paga el tipo fijo y la que recibe el tipo variable. Estas relaciones muestran que no basta con comprobar cada campo por separado. La operación debe ser coherente en su conjunto.
-
-    A estas dificultades se añade el riesgo de incorporar información que no aparece en la solicitud ni puede obtenerse mediante una regla de mercado claramente definida. Los modelos de lenguaje pueden producir respuestas plausibles que incluyan datos no respaldados por el texto de entrada. En un contexto financiero, este comportamiento resulta especialmente problemático porque una operación puede parecer completa y, sin embargo, contener valores que no reflejan la intención del solicitante. Los mecanismos que restringen la estructura de salida pueden reducir determinados errores, pero no eliminan por sí mismos la posibilidad de generar contenido incorrecto o no justificado \citep{bechard2024structuredrag}.
-
-    La conversión también debe preservar la estructura propia del producto financiero. En un \textit{IRS} no basta con reconocer una lista de términos económicos. Es necesario asignar cada atributo a la pata correspondiente y representar correctamente las relaciones entre ambas. Una frecuencia de pago, una convención de recuento de días o un índice de referencia situados en el lugar equivocado pueden producir una descripción técnicamente completa, pero financieramente incorrecta.
-
-    La Tabla~\ref{tab:problemas_nl_rfq} sintetiza las principales dimensiones del problema y su posible impacto en la representación estructurada de la operación.
-
-    \begin{table}[H]
-    \centering
-    \small
-    \caption{Taxonomía de problemas en la conversión de lenguaje natural a una RFQ estructurada}
-    \label{tab:problemas_nl_rfq}
-    \begin{tabular}{|P{3.2cm}|P{5.1cm}|P{5.1cm}|}
-    \hline
-    \textbf{Categoría del problema} &
-    \textbf{Manifestación en el lenguaje natural} &
-    \textbf{Impacto en la RFQ} \\
-    \hline
-    Variabilidad terminológica &
-    Uso de expresiones equivalentes, abreviaturas, distintos idiomas o plazos relativos, como \enquote{\textit{pay fixed}}, \enquote{recibir variable} o \enquote{a cinco años}. &
-    Dificultad para asociar de forma unívoca cada expresión con un atributo normalizado. \\
-    \hline
-    Información incompleta &
-    Omisión de atributos necesarios, como la convención de recuento de días, la frecuencia de pago o el índice de referencia. &
-    Necesidad de distinguir entre información derivable mediante una convención conocida y datos cuya ausencia impide definir la operación. \\
-    \hline
-    Incoherencia entre atributos &
-    Combinación incompatible de fechas, divisas, índices de referencia o características contractuales. &
-    Generación de una operación cuyos campos pueden ser válidos por separado, pero no resultan coherentes en conjunto. \\
-    \hline
-    Información no justificada &
-    Incorporación de valores que no aparecen en la solicitud ni pueden derivarse mediante una regla definida. &
-    Alteración de la intención financiera del solicitante y posible propagación del error a la valoración. \\
-    \hline
-    Asignación estructural incorrecta &
-    Confusión de atributos entre la pata fija y la pata flotante. &
-    Generación de una estructura técnicamente completa, pero financieramente incorrecta. \\
-    \hline
-    \end{tabular}
-    \floatfoot{Fuente: elaboración propia.}
-    \end{table}
-
-    En consecuencia, los principales problemas de la conversión se concentran en la ambigüedad del lenguaje, la omisión de información, la interpretación incorrecta de los términos, la incorporación de valores no justificados y la falta de coherencia entre los atributos de la operación. Una \textit{RFQ} estructurada no solo debe ajustarse a un formato determinado, sino que también debe conservar el significado financiero de la solicitud original. Cuando la información disponible no permita hacerlo de forma inequívoca, la petición deberá considerarse incompleta o inválida en lugar de completar sus términos mediante suposiciones no justificadas.
-
-    La identificación de estos problemas permite establecer, en los apartados siguientes, los requisitos funcionales y no funcionales que debe cumplir un sistema destinado a realizar esta conversión.
-    
-
+La solución debe distinguir tres situaciones. Un campo obligatorio ausente impide completar la operación. Una convención estándar omitida puede derivarse si existe una regla definida. Una convención alternativa solo puede aceptarse cuando la petición la enuncia. Además, todos los términos deben validarse en conjunto: una fecha o un índice pueden ser válidos aisladamente y resultar incompatibles dentro de la operación.
 
 \section{Requisitos funcionales}
+\label{sec:requisitos_funcionales}
 
-A partir de los problemas descritos en el apartado anterior, se definen los requisitos funcionales del sistema. Estos requisitos establecen las funciones necesarias para transformar una petición de valoración expresada en lenguaje natural en una \textit{RFQ} estructurada, completa y coherente. Su definición se centra en el comportamiento esperado, sin determinar todavía la arquitectura o las tecnologías utilizadas para implementarlo.
-
-En primer lugar, el sistema debe recibir peticiones redactadas en lenguaje natural y reconocer si describen un producto financiero incluido en el alcance del trabajo. Cuando la solicitud corresponda a un producto no soportado o no contenga información suficiente para identificarlo, el sistema debe indicarlo de forma explícita y evitar la generación de una \textit{RFQ} aparentemente válida.
-
-Cuando la petición corresponda a un \textit{IRS} admitido, el sistema debe identificar sus términos económicos y contractuales. La solicitud debe permitir determinar siete campos obligatorios: el propósito de la \textit{RFQ} (\textit{purpose}), la fecha de valoración, la fecha de inicio, la fecha de vencimiento, la divisa, el nocional y la dirección de la operación, expresada mediante la posición receptora o pagadora del tipo fijo. El propósito distingue una cotización a tipo par (\texttt{PAR\_RATE\_QUOTE}) de la valoración de una operación ya contratada (\texttt{VALUATION}).
-
-Además de los campos obligatorios, la representación debe incluir las características correspondientes a las patas fija y flotante. Entre ellas se encuentran las frecuencias de pago, las convenciones de recuento de días, el índice de referencia y las curvas utilizadas para el descuento y la proyección de los flujos. La estructura de ambas patas y la separación entre la curva de descuento y la curva de proyección siguen el marco financiero descrito por \textcite{ausin2025quantitative}.
-
-Cuando alguno de estos atributos no aparezca expresamente en la petición, el especialista podrá derivarlo únicamente si existe una convención de mercado previamente definida para la divisa, el vencimiento y el tipo de producto correspondientes. Durante la validación se distingue de forma transitoria si un término fue enunciado en la petición o derivado por convención, ya que una convención no estándar solo puede aceptarse cuando el texto la especifica. Esta comprobación es léxica y utiliza un vocabulario cerrado: detecta la presencia de determinadas expresiones, pero no interpreta su significado. La procedencia no se conserva como atributo de la \textit{RFQ}. Si falta alguno de los siete campos obligatorios o no existe una regla aplicable, la solicitud debe considerarse incompleta.
-
-El sistema también debe representar explícitamente las fechas de pago de cada pata. Estos calendarios deben respetar la fecha de inicio, la fecha de vencimiento y la frecuencia aplicable, además de permitir la representación de periodos no regulares. De esta forma, la \textit{RFQ} puede conservar la estructura temporal de la operación sin limitarse a describirla mediante un único vencimiento o una frecuencia general.
-
-Antes de mapear y serializar la \textit{RFQ}, el sistema debe comprobar que los valores obtenidos sean completos y coherentes. Estas comprobaciones deben detectar, entre otros casos, fechas imposibles o desordenadas, nocionales no admisibles, incompatibilidades entre la divisa y el índice, contradicciones en la dirección de la operación y errores en la estructura de las patas. También deben verificar la coherencia entre el propósito y la presencia del tipo fijo: una cotización \texttt{PAR\_RATE\_QUOTE} debe omitirlo, mientras que una \texttt{VALUATION} debe incluir el tipo pactado. Si se detecta un error de extracción susceptible de corrección, el proceso podrá repetirla con un límite máximo de cinco intentos. Si no se obtiene una operación válida dentro de ese límite, el sistema debe finalizar con un resultado de error y no debe serializar una \textit{RFQ} no fiable.
-
-Finalmente, cuando la petición supere las comprobaciones anteriores, el sistema debe producir una representación estructurada y procesable por otros componentes. La salida debe conservar el significado financiero de la solicitud original y contener la información necesaria para su posterior transformación, análisis o valoración, sin añadir datos que no procedan del texto o de una convención previamente establecida.
-
-La Tabla~\ref{tab:requisitos_funcionales} resume los requisitos funcionales derivados de estas necesidades.
+Los requisitos funcionales de la Tabla~\ref{tab:requisitos_funcionales} convierten los problemas anteriores en comportamientos verificables. Se formulan sin imponer todavía la arquitectura concreta.
 
 \begin{table}[H]
 \centering
@@ -123,56 +79,40 @@ La Tabla~\ref{tab:requisitos_funcionales} resume los requisitos funcionales deri
 \label{tab:requisitos_funcionales}
 \begin{tabular}{|P{1.8cm}|P{11.8cm}|}
 \hline
-\textbf{Identificador} & \textbf{Requisito funcional} \\
+\textbf{ID} & \textbf{Requisito} \\
 \hline
-RF-01 & El sistema debe recibir una petición de valoración redactada en lenguaje natural. \\
+RF-01 & Recibir una petición de cotización o valoración en lenguaje natural. \\
 \hline
-RF-02 & El sistema debe identificar el producto financiero solicitado y rechazar los productos no incluidos en el alcance. \\
+RF-02 & Identificar el producto y rechazar los que estén fuera del alcance. \\
 \hline
-RF-03 & El sistema debe extraer los siete campos obligatorios: propósito, fechas de valoración, inicio y vencimiento, divisa, nocional y dirección de la operación. \\
+RF-03 & Determinar los siete campos obligatorios: propósito, fechas de valoración, inicio y vencimiento, divisa, nocional y dirección. \\
 \hline
-RF-04 & El sistema debe comprobar la coherencia entre el propósito y la presencia del tipo fijo: ausente en \texttt{PAR\_RATE\_QUOTE} y presente en \texttt{VALUATION}. \\
+RF-04 & Diferenciar \texttt{PAR\_RATE\_QUOTE}, sin tipo fijo, de \texttt{VALUATION}, con tipo pactado. \\
 \hline
-RF-05 & El sistema debe representar de forma diferenciada las patas fija y flotante y sus correspondientes atributos. \\
+RF-05 & Representar por separado los términos comunes y las patas fija y flotante. \\
 \hline
-RF-06 & El sistema debe derivar los campos no explícitos únicamente mediante convenciones de mercado previamente definidas y comprobar si una convención no estándar fue enunciada en la petición. \\
+RF-06 & Derivar solo atributos respaldados por convenciones definidas y respetar alternativas enunciadas. \\
 \hline
-RF-07 & El sistema debe generar las fechas de pago de cada pata y admitir periodos no regulares. \\
+RF-07 & Generar las fechas de pago de cada pata y admitir periodos no regulares. \\
 \hline
-RF-08 & El sistema debe detectar campos obligatorios ausentes e impedir la generación de una \textit{RFQ} completa cuando no puedan determinarse. \\
+RF-08 & Detectar información obligatoria ausente sin completarla mediante suposiciones. \\
 \hline
-RF-09 & El sistema debe validar la integridad, la coherencia temporal y la compatibilidad financiera de la operación antes de mapearla y serializarla. \\
+RF-09 & Validar integridad, orden temporal, convenciones y compatibilidad financiera antes de mapear. \\
 \hline
-RF-10 & El sistema debe permitir corregir errores de extracción mediante un proceso limitado a un máximo de cinco intentos. \\
+RF-10 & Repetir errores corregibles de extracción con un máximo de cinco pasadas. \\
 \hline
-RF-11 & El sistema debe devolver una \textit{RFQ} estructurada cuando la operación sea válida o un resultado de error cuando no pueda validarse. \\
+RF-11 & Devolver una \textit{RFQ} estructurada o un error que explique por qué no puede emitirse. \\
 \hline
 \end{tabular}
 \floatfoot{Fuente: elaboración propia.}
 \end{table}
 
+Los requisitos distinguen deliberadamente los campos obligatorios de las convenciones derivables. El tipo fijo no es obligatorio de forma general: su presencia depende del propósito. Los calendarios sí forman parte de la salida porque cada pata puede tener una frecuencia distinta y periodos rotos.
 
 \section{Requisitos no funcionales}
+\label{sec:requisitos_no_funcionales}
 
-Además de las funciones descritas en el apartado anterior, el sistema debe cumplir una serie de requisitos no funcionales relacionados con la calidad, la fiabilidad y la capacidad de evaluación de sus resultados. Estos requisitos no determinan qué información debe contener la \textit{RFQ}, sino las condiciones bajo las cuales debe realizarse su generación y validación.
-
-El primer requisito es la fiabilidad. Una salida con el formato esperado no puede considerarse válida únicamente por ser procesable desde el punto de vista técnico. También debe representar correctamente la intención financiera de la petición y respetar las relaciones existentes entre sus atributos. Cuando no sea posible generar una operación completa y coherente, el sistema debe devolver un error explícito en lugar de proporcionar una respuesta aparentemente válida.
-
-El sistema también debe ser robusto frente a la variabilidad del lenguaje natural. Peticiones equivalentes pueden incluir abreviaturas, expresiones en distintos idiomas, cambios en el orden de los términos o convenciones habituales de la comunicación financiera. Estas variaciones no deben alterar el significado de la \textit{RFQ} generada cuando la información económica subyacente sea la misma. Al mismo tiempo, la robustez no debe lograrse mediante la incorporación de valores sin respaldo en la petición o en una convención previamente definida.
-
-Otro requisito fundamental es la trazabilidad. Para cada ejecución debe ser posible identificar la petición recibida, la configuración utilizada, el resultado de la validación y la \textit{RFQ} producida, cuando corresponda. Esta información permite analizar los errores y comprobar que las conclusiones experimentales se corresponden con una configuración concreta del sistema. La distinción entre términos enunciados y derivados se utiliza durante la validación, pero no se persiste como atributo de la salida.
-
-La reproducibilidad resulta igualmente necesaria debido al carácter experimental del trabajo. Los modelos, las instrucciones, los parámetros de ejecución, los casos de prueba y las dependencias utilizadas deben poder identificarse y conservarse. Cada conjunto de ejecuciones debe mantenerse separado de aquellos realizados con configuraciones o referencias diferentes. De esta forma, un cambio en el sistema o en los resultados esperados no debe provocar que se combinen mediciones pertenecientes a experimentos distintos.
-
-El sistema debe facilitar también la evaluación cuantitativa de su funcionamiento. Cada ejecución debe proporcionar la información necesaria para medir la corrección de la \textit{RFQ}, el resultado de la validación, la latencia, el consumo de recursos y el coste asociado al uso del modelo. Estas medidas deben obtenerse de forma homogénea para permitir comparaciones entre configuraciones, modelos o enfoques de procesamiento.
-
-Desde el punto de vista técnico, el sistema debe ser mantenible y extensible. La definición de los productos financieros, las convenciones de mercado, las reglas de validación y la configuración de los modelos deben mantenerse suficientemente separadas para que una modificación en uno de estos elementos no obligue a rehacer el conjunto del sistema. Esta separación debe permitir ampliar en el futuro el número de productos admitidos o sustituir el proveedor del modelo sin modificar la representación financiera fundamental.
-
-La gestión segura de la configuración constituye otro requisito relevante. Las credenciales necesarias para acceder a servicios externos no deben almacenarse en el código fuente ni incorporarse al repositorio. Del mismo modo, los registros de ejecución deben limitarse a la información necesaria para la evaluación y evitar la exposición involuntaria de secretos o datos ajenos al objetivo experimental.
-
-Finalmente, los errores deben comunicarse de forma comprensible. Cuando una petición no pueda procesarse, el resultado debe indicar la causa general del fallo, como la ausencia de un campo obligatorio, la incompatibilidad entre atributos, un producto no soportado o el agotamiento del número máximo de intentos. Esto permite diferenciar un rechazo correcto de un fallo técnico y facilita el análisis posterior.
-
-La Tabla~\ref{tab:requisitos_no_funcionales} resume los requisitos no funcionales definidos para el sistema.
+Los requisitos no funcionales fijan las condiciones de calidad, trazabilidad y evaluación.
 
 \begin{table}[H]
 \centering
@@ -181,81 +121,66 @@ La Tabla~\ref{tab:requisitos_no_funcionales} resume los requisitos no funcionale
 \label{tab:requisitos_no_funcionales}
 \begin{tabular}{|P{1.8cm}|P{11.8cm}|}
 \hline
-\textbf{Identificador} & \textbf{Requisito no funcional} \\
+\textbf{ID} & \textbf{Requisito} \\
 \hline
-RNF-01 & El sistema debe priorizar la corrección financiera y rechazar las operaciones que no puedan representarse de manera completa y coherente. \\
+RNF-01 & Priorizar la corrección financiera y rechazar operaciones que no puedan representarse de forma coherente. \\
 \hline
-RNF-02 & El sistema debe mantener un comportamiento robusto ante variaciones terminológicas, sintácticas y lingüísticas que conserven el mismo significado financiero. \\
+RNF-02 & Mantener el significado ante variaciones lingüísticas equivalentes. \\
 \hline
-RNF-03 & Cada ejecución debe ser trazable mediante el registro de la entrada, la configuración, el resultado de la validación y la salida generada. \\
+RNF-03 & Registrar entrada, configuración, resultado de validación y salida de cada ejecución. \\
 \hline
-RNF-04 & Los experimentos deben ser reproducibles mediante la conservación de modelos, parámetros disponibles, instrucciones, dependencias y casos de prueba. \\
+RNF-04 & Conservar modelos, instrucciones, dependencias, casos y parámetros disponibles para reproducir las condiciones. \\
 \hline
-RNF-05 & Las ejecuciones realizadas con configuraciones o referencias diferentes deben permanecer separadas e identificadas. \\
+RNF-05 & Mantener separadas las ejecuciones con configuraciones o referencias diferentes. \\
 \hline
-RNF-06 & El sistema debe permitir medir la corrección, la latencia, el consumo de recursos y el coste de cada ejecución. \\
+RNF-06 & Medir corrección, latencia, consumo y coste de cada ejecución. \\
 \hline
-RNF-07 & La definición financiera, las reglas de validación y la configuración de los modelos deben poder modificarse de manera independiente. \\
+RNF-07 & Separar definición financiera, validación y configuración de modelos para facilitar cambios. \\
 \hline
-RNF-08 & El sistema debe permitir la incorporación futura de nuevos productos financieros y proveedores de modelos sin sustituir su estructura fundamental. \\
+RNF-08 & Permitir ampliar productos y proveedores sin sustituir el núcleo del sistema. \\
 \hline
-RNF-09 & Las credenciales y los secretos de acceso no deben almacenarse en el código fuente ni incorporarse al repositorio. \\
+RNF-09 & Mantener credenciales y secretos fuera del código y del repositorio. \\
 \hline
-RNF-10 & Los errores y rechazos deben expresarse de forma comprensible y permitir distinguir una petición inválida de un fallo técnico. \\
-
+RNF-10 & Distinguir en los errores una petición inválida de un fallo técnico. \\
 \hline
 \end{tabular}
 \floatfoot{Fuente: elaboración propia.}
 \end{table}
 
+Estos requisitos permiten comprobar no solo si el sistema genera una salida, sino si puede auditarse y compararse. La reproducibilidad se refiere a conservar las condiciones y respuestas originales; no garantiza una respuesta idéntica de los proveedores. La extensibilidad se evalúa mediante la separación de responsabilidades, aunque la implementación final solo cubre un producto.
 
 \section{Alcance inicial: IRS vanilla}
+\label{sec:alcance_inicial}
 
-El alcance inicial del trabajo se limita a la conversión de peticiones de valoración correspondientes a permutas de tipos de interés simples o \textit{vanilla Interest Rate Swaps} (\textit{IRS}). Esta delimitación permite estudiar con suficiente profundidad la transformación de lenguaje natural en una representación financiera estructurada, sin introducir desde el inicio la complejidad adicional asociada a otros productos derivados.
+El alcance se limita a peticiones de cotización y valoración de \textit{IRS vanilla} en EUR y USD, con vencimientos nominales de al menos un año. La operación utiliza un nocional y una divisa comunes, una pata fija y otra flotante. Esta estructura sigue la Definición 2.19 de \textcite[p.~59]{ausin2025quantitative}.
 
-Un \textit{IRS vanilla} se considera, a efectos de este trabajo, una operación bilateral en la que dos partes intercambian flujos de intereses calculados sobre un mismo nocional, una misma divisa y un mismo periodo de vigencia. Una de las patas paga un tipo fijo, mientras que la otra paga un tipo variable vinculado a un índice de referencia. El nocional no se intercambia y se utiliza únicamente como base para calcular los flujos de ambas patas. Esta estructura se corresponde con la definición financiera adoptada como referencia para el trabajo \citep{ausin2025quantitative}.
+La petición debe permitir determinar los siete campos obligatorios. Las bases, frecuencias, índice, tenor y curvas pueden derivarse mediante convenciones documentadas. En EUR, la regla depende del vencimiento: hasta un año utiliza EURIBOR 3M y, por encima, EURIBOR 6M. En USD, el \textit{IRS vanilla} moderno es un OIS contra SOFR compuesto, sin tenor, con ambas patas anuales en ACT/360 \citep{opengamma2026strata,cme2026sofrswaps}. Una convención alternativa expresamente solicitada prevalece si sigue siendo compatible con el producto.
 
-Dentro de este alcance, la petición debe permitir identificar siete términos obligatorios: el propósito de la \textit{RFQ}, la fecha de valoración, la fecha de inicio, la fecha de vencimiento, la divisa, el nocional y la dirección de la operación. El propósito distingue una cotización a tipo par de la valoración de un \textit{swap} ya contratado. En una cotización, el tipo fijo debe estar ausente porque constituye la incógnita que resolverá el motor haciendo cero el valor presente neto. En una valoración, la petición debe incluir el tipo pactado cuya valoración se solicita. Por tanto, el tipo fijo no es obligatorio de forma general, pero su presencia debe ser coherente con el propósito indicado.
-
-Otros atributos pueden obtenerse mediante convenciones de mercado previamente documentadas cuando no aparezcan expresamente en la solicitud. Entre ellos se encuentran las convenciones de recuento de días, las frecuencias de pago, el índice de referencia, su tenor y las curvas empleadas para el descuento y la proyección de los flujos. Esta derivación solo resulta admisible cuando existe una regla definida para la combinación de producto, divisa y vencimiento correspondiente. Si la petición especifica alguno de estos atributos, el valor indicado debe prevalecer siempre que sea compatible con el resto de la operación.
-
-El alcance contempla vencimientos iguales o superiores a un año. Las operaciones con vencimiento inferior a un año quedan excluidas porque siguen convenciones propias del mercado monetario, diferentes de las empleadas en los \textit{swaps} con pagos periódicos. Esta exclusión evita aplicar automáticamente convenciones de un \textit{IRS} estándar a instrumentos cuya estructura temporal y forma de liquidación pueden ser distintas.
-
-La cobertura se limita a operaciones denominadas en euros y dólares estadounidenses. Para EUR se aplican las convenciones correspondientes a EURIBOR según el vencimiento. Para USD se utiliza la convención moderna de \textit{swap} contra SOFR compuesto, sin tenor de fijación, y no la antigua estructura de tipo fijo contra SOFR a tres meses heredada del mercado LIBOR. Otras divisas, incluida GBP, quedan fuera del alcance inicial.
-
-La representación de la operación debe diferenciar explícitamente la pata fija y la pata flotante. Cada pata incluye su frecuencia, su convención de recuento de días y sus fechas de pago. La pata flotante incorpora además el tipo de referencia, el índice, el tenor cuando corresponda, el posible diferencial y la curva utilizada para proyectar los tipos variables. El alcance admite calendarios con periodos no regulares, siempre que las fechas necesarias puedan determinarse de forma coherente a partir de la petición y de las reglas aplicables.
-
-Quedan fuera del alcance inicial los swaps de base, los swaps entre divisas, los swaps amortizables, los swaps con nocional variable, los tipos fijos escalonados y las estructuras con componentes opcionales, como las \textit{swaptions}, los \textit{caps} y los \textit{floors}. También se excluyen otros derivados, como futuros, opciones, bonos estructurados y productos de crédito. Una petición correspondiente a cualquiera de estas categorías debe identificarse como no soportada, en lugar de aproximarse mediante una estructura \textit{vanilla}.
-
-El modelo adopta además determinadas simplificaciones. No se representan fechas de fijación independientes, calendarios de días festivos ni ajustes detallados por días hábiles. Las fechas de devengo se consideran alineadas con las fechas del índice y se utiliza el mismo tipo fijo durante toda la vida de la operación. Estas simplificaciones siguen el modelo financiero utilizado como referencia y permiten concentrar el análisis en la conversión de la petición y en la correcta estructuración de sus términos \citep{ausin2025quantitative}.
-
-La valoración cuantitativa de la operación tampoco forma parte del problema de conversión abordado en este capítulo. La salida esperada es una \textit{RFQ} estructurada y validada que contenga la información necesaria para su posterior consumo por un motor de valoración. La construcción de curvas, el cálculo de flujos descontados y la obtención del valor razonable se tratan en las fases posteriores del trabajo.
-
-La Tabla~\ref{tab:alcance_inicial} resume los elementos incluidos y excluidos del alcance inicial.
+La Tabla~\ref{tab:alcance_inicial} resume la delimitación.
 
 \begin{table}[H]
 \centering
 \small
-\caption{Delimitación del alcance inicial del trabajo}
+\caption{Delimitación del alcance inicial}
 \label{tab:alcance_inicial}
 \begin{tabular}{|P{2.5cm}|P{5.5cm}|P{5.5cm}|}
 \hline
 \textbf{Ámbito} & \textbf{Incluido} & \textbf{Excluido} \\
 \hline
-Producto & \textit{IRS vanilla} de tipo fijo frente a variable. & Swaps de base, swaps entre divisas, \textit{swaptions} y otros derivados. \\
+Producto & \textit{IRS vanilla} fijo contra variable. & \textit{Basis swaps}, operaciones entre divisas, \textit{swaptions} y otros derivados. \\
 \hline
-Vencimiento & Igual o superior a un año. & Inferior a un año. \\
+Divisa y plazo & EUR y USD; vencimiento nominal de al menos un año. & Otras divisas y vencimientos inferiores a un año. \\
 \hline
-Divisa & EUR y USD. & Otras divisas, incluida GBP. \\
+Estructura & Nocional común, dos patas, curvas y calendarios por pata. & Nocional variable, amortización, tipos escalonados y componentes opcionales. \\
 \hline
-Estructura & Nocional y divisa comunes, una pata fija y otra flotante. & Nocional variable, amortización, tipos escalonados y componentes opcionales. \\
+Convenciones & Convenciones estándar definidas y alternativas compatibles enunciadas. & Combinaciones incompatibles de divisa e índice. \\
 \hline
-Calendarios & Fechas de pago por pata y periodos no regulares. & Calendarios festivos, ajustes detallados por días hábiles y fechas de fijación independientes. \\
+Calendarios & Fechas de pago y periodos no regulares. & Festivos, fijaciones independientes y ajustes detallados de días hábiles. \\
 \hline
-Procesamiento & Interpretación, estructuración y validación de la petición. & Valoración cuantitativa y construcción de curvas de mercado. \\
-\hline
-Resultado & \textit{RFQ} estructurada o error explícito. & Aproximación de productos no soportados mediante una estructura \textit{vanilla}. \\
+Resultado & \textit{RFQ} validada o error explícito. & Valoración, riesgo, construcción de curvas y contratación. \\
 \hline
 \end{tabular}
 \floatfoot{Fuente: elaboración propia.}
 \end{table}
+
+El modelo utiliza el mismo tipo fijo durante toda la operación y no representa fechas de fijación ni calendario de festivos, simplificaciones coherentes con el modelo de referencia \citep[p.~63]{ausin2025quantitative}. El resultado queda preparado para un motor financiero, pero el cálculo del precio y del riesgo no forma parte del problema evaluado.

@@ -1,0 +1,101 @@
+\chapter{Conclusiones y líneas futuras}
+\label{cap:conclusiones}
+
+Este capítulo evalúa el grado de cumplimiento de los objetivos, resume las aportaciones propias y delimita el alcance de los resultados. Las conclusiones se apoyan en la evidencia presentada en el capítulo 9 y no pretenden extenderse a productos o condiciones que no se han evaluado.
+
+\section{Conclusiones principales}
+\label{sec:conclusiones_principales}
+
+El objetivo del trabajo era diseñar, implementar y evaluar un sistema capaz de transformar peticiones de cotización y valoración de \textit{IRS}, redactadas en lenguaje natural, en una \textit{RFQ} estructurada y verificable. Los resultados permiten formular cuatro conclusiones principales.
+
+\begin{enumerate}
+    \item \textbf{El problema se ha resuelto dentro del alcance definido.}
+
+    El prototipo recibe una petición en lenguaje natural y devuelve una \textit{RFQ} validada o un error que explica por qué no puede generarse. La configuración recomendada, basada en \texttt{gpt-5.6-terra}, obtuvo el estado esperado y una coincidencia exacta en los 23 casos. La batería incluye cotizaciones, valoraciones, jerga de mesa, peticiones incompletas o incoherentes y productos no soportados. Por tanto, la solución cumple los objetivos funcionales dentro del alcance de los \textit{IRS vanilla} en EUR y USD.
+
+    \item \textbf{La arquitectura híbrida permite utilizar los modelos sin delegar en ellos los controles críticos.}
+
+    Los agentes interpretan fechas relativas, abreviaturas, direcciones y convenciones financieras. Después, el validador comprueba la integridad y la coherencia de la operación, y el mapeador determinista genera la salida final. Esta separación evitó emitir operaciones incompletas o incompatibles y mantuvo las reglas auditables. El agente proto confirmó que los modelos pueden serializar la estructura, pero también que no resulta necesario emplear una llamada probabilística para una transformación que el código realiza de forma exacta.
+
+    
+    \item \textbf{La calidad de la especificación y el cumplimiento del formato forman parte del rendimiento.}
+
+    Con una instrucción ambigua, \texttt{gpt-5.6-sol} obtuvo 19/23; tras corregir una frase alcanzó 23/23 sin cambiar el modelo ni los casos. El bucle de autocorrección rescató tres extracciones bajo esa especificación ambigua, pero no pudo corregir el falso positivo de \texttt{gpt-5.6-luna} porque la clasificación queda fuera de su alcance. Por otra parte, \texttt{claude-haiku-4-5} obtuvo 13/23 en validación y siete de sus fallos estuvieron relacionados con salidas mal formadas del especialista. En una cadena automática, una respuesta financieramente comprensible no es correcta si el componente siguiente no puede procesarla.
+
+    \item \textbf{La selección del modelo y la validez de la evaluación deben comprobarse sobre la tarea completa.}
+
+    Cuatro modelos alcanzaron 23/23, pero sus costes por pasada variaron entre 0,2353 y 2,0799 dólares. \texttt{gpt-5.6-terra} fue el modelo más barato y más rápido entre los que no fallaron, por lo que ofrece la mejor relación observada entre acierto, coste y latencia. Al mismo tiempo, los ocho defectos de instrumentación detectados muestran que una medida estable puede ser incorrecta. La telemetría permitió reconstruir la clasificación real de \texttt{claude-haiku-4-5}, 19/23, cuando el valor almacenado era 13/23. Conservar las respuestas originales fue, por tanto, necesario para auditar el propio evaluador.
+\end{enumerate}
+
+En conjunto, la evidencia respalda una solución basada en \texttt{gpt-5.6-terra}, con validación previa a la emisión y mapeo determinista de la \textit{RFQ}. La conclusión se limita a la batería y a la configuración evaluadas: demuestra la viabilidad del enfoque, no un rendimiento universal ante cualquier petición financiera.
+
+\section{Aportaciones del trabajo}
+\label{sec:aportaciones_trabajo}
+
+Las aportaciones propias se concentran en tres resultados.
+
+\begin{enumerate}
+    \item \textbf{Un sistema completo de lenguaje natural a \textit{RFQ} validada.}
+
+    Se diseñó e implementó una arquitectura que integra clasificación, extracción, autocorrección, validación y mapeo. El esquema protobuf separa los términos comunes y las dos patas del \textit{IRS}, distingue cotización y valoración y representa tanto índices IBOR como SOFR compuesto. Las convenciones de EUR y USD, los calendarios y las reglas de coherencia se incorporaron de forma explícita y verificable.
+
+    \item \textbf{Un marco experimental trazable y reconstruible.}
+
+    Se creó una batería de 23 casos en cinco familias y se compararon seis modelos de dos proveedores bajo condiciones comunes. La evaluación separa clasificación, validación, exactitud por campo, coincidencia exacta, fidelidad de serialización, coste y latencia. Cada tanda conserva su configuración y cada llamada registra la petición, la respuesta, la huella de las instrucciones, el consumo y el coste. Este diseño permitió revisar resultados y recuperar información cuando una métrica almacenada resultó incorrecta.
+
+    \item \textbf{Evidencia sobre decisiones de diseño que normalmente se tratan como supuestos.}
+
+    Los experimentos mostraron que el agente proto reproduce la salida determinista siempre que entrega un mensaje analizable, que el bucle compensa errores de extracción pero no de clasificación y que la tarifa por token no predice el coste de la tarea. También mostraron el efecto de una instrucción ambigua y de un contrato de formato incumplido. Estas observaciones convierten decisiones sobre instrucciones, validación y serialización en conclusiones respaldadas por datos.
+\end{enumerate}
+
+La aportación no consiste en un nuevo modelo fundacional ni en un motor de valoración. Consiste en integrar conocimiento financiero, modelos de lenguaje y controles deterministas en un flujo medible, y en demostrar qué partes pueden confiarse al modelo y cuáles conviene mantener en código.
+
+\section{Limitaciones}
+\label{sec:limitaciones}
+
+Los resultados deben interpretarse atendiendo a cuatro limitaciones principales.
+
+\begin{enumerate}
+    \item \textbf{La batería es reducida y no es independiente del desarrollo.}
+
+    Los 23 casos fueron elaborados por el autor y también sirvieron para revisar instrucciones y referencias. El uso de la misma batería mantiene válida la comparación relativa entre modelos, pero puede favorecer el nivel absoluto de acierto. Además, una sola repetición por modelo y caso limita la potencia estadística. Las tandas repetidas de OpenAI aportaron evidencia de estabilidad, pero no sustituyen una muestra externa.
+
+    \item \textbf{El alcance financiero es limitado.}
+
+    El sistema solo trata \textit{IRS vanilla} en EUR y USD con vencimientos nominales de al menos un año. No cubre otros productos, divisas ni estructuras complejas. Tampoco incorpora calendarios de festivos ni fechas de fijación independientes, y la detección de convenciones expresadas utiliza un vocabulario cerrado.
+
+    \item \textbf{La variabilidad y la comparación experimental tienen restricciones.}
+
+    Ninguno de los proveedores permitió fijar la temperatura, por lo que una nueva ejecución puede generar otra respuesta. La mayoría de los contrastes de McNemar presentaron pocas discordancias y no permiten concluir que los modelos con resultados próximos sean equivalentes. Además, las latencias de OpenAI incluyen un intento HTTP rechazado al enviar inicialmente la temperatura, asimetría que debe considerarse al comparar proveedores.
+
+    \item \textbf{El prototipo no incluye valoración ni validación operativa externa.}
+
+    La salida queda preparada para un motor financiero, pero el trabajo no calcula el precio ni el riesgo del \textit{swap}. Tampoco se probó el sistema con usuarios, peticiones reales o sistemas de contratación. En consecuencia, no se ha medido el efecto económico de un error ni el retorno de la inversión de una implantación completa.
+\end{enumerate}
+
+Estas limitaciones no anulan los resultados, pero fijan su alcance: el trabajo demuestra que el enfoque funciona sobre la batería definida y permite comparar modelos bajo condiciones comunes.
+
+\section{Líneas futuras}
+\label{sec:lineas_futuras}
+
+Las siguientes líneas responden directamente a las limitaciones observadas y se presentan por orden de prioridad.
+
+\begin{enumerate}
+    \item \textbf{Validar con una batería externa y más repeticiones.}
+
+    La primera ampliación debe incorporar peticiones nuevas redactadas o revisadas por profesionales ajenos al desarrollo. Un mayor número de casos y repeticiones permitiría medir mejor la estabilidad, aumentar la potencia estadística y comprobar la generalización a otras formas de expresión.
+
+    \item \textbf{Corregir el estado parcial y ampliar la autocorrección a la clasificación.}
+
+    El evaluador debe conservar la clasificación y el número de intentos aunque una etapa posterior falle. Además, el diagnóstico del validador podría devolverse al orquestador para revisar falsos positivos como \texttt{eur\_contra\_sofr}. El número de pasadas debe permanecer limitado para controlar el coste y evitar ciclos indefinidos.
+
+    \item \textbf{Comparar la arquitectura multiagente con una alternativa monolítica.}
+
+    Una evaluación con los mismos casos, modelos y métricas permitiría determinar si la separación de responsabilidades compensa el mayor número de llamadas. Esta comparación debe considerar acierto, trazabilidad, coste, latencia y estabilidad, en lugar de asumir que una de las dos topologías es superior.
+
+    \item \textbf{Integrar valoración y convenciones de mercado completas.}
+
+    Conectar la \textit{RFQ} con un motor como QuantLib permitiría comprobar que la operación puede valorarse y medir la consecuencia económica de cada error. Esta fase debería incorporar calendarios de festivos, fechas de fijación, ajustes de días hábiles y, posteriormente, nuevos productos y divisas mediante sus propios esquemas, reglas y casos de prueba.
+\end{enumerate}
+
+Estas cuatro líneas ofrecen una evolución gradual: primero refuerzan la validez del experimento y corrigen las limitaciones observadas; después comparan la arquitectura y amplían la cobertura financiera del prototipo.

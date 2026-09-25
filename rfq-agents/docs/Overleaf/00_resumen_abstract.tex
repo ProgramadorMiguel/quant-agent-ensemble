@@ -1,0 +1,33 @@
+\chapter*{Resumen}
+\addcontentsline{toc}{chapter}{Resumen}
+
+Las peticiones de cotización y valoración de derivados pueden expresarse en lenguaje natural mediante frases completas, abreviaturas o jerga financiera. Antes de procesarlas, es necesario identificar el producto, extraer sus términos y convertirlos en una estructura completa y coherente. Un error en esta fase puede modificar la operación o introducir información que el solicitante no proporcionó.
+
+Este trabajo diseña, implementa y evalúa un sistema que transforma peticiones de permutas de tipos de interés (\textit{Interest Rate Swaps}, \textit{IRS}) en una \textit{Request for Quote} (\textit{RFQ}) definida mediante \textit{Protocol Buffers}. La solución utiliza un agente orquestador para clasificar el producto y un agente especialista para interpretar sus términos. Después, un validador determinista comprueba la integridad y la coherencia financiera de la operación. Si detecta un error de extracción corregible, devuelve el diagnóstico al especialista mediante un bucle limitado a cinco pasadas. Finalmente, un mapeador determinista genera la \textit{RFQ}. Un tercer agente reproduce esta serialización únicamente con fines experimentales.
+
+El sistema se limita a \textit{IRS vanilla} en EUR y USD con vencimientos nominales de al menos un año. La evaluación utiliza 23 casos distribuidos en cinco familias: cotizaciones, valoraciones, jerga de mesa, peticiones no valorables y productos no soportados. Se comparan seis modelos de OpenAI y Anthropic mediante métricas de clasificación, validación, exactitud por campo, coincidencia exacta, fidelidad de serialización, coste y latencia.
+
+Cuatro modelos resolvieron correctamente los 23 casos. \texttt{gpt-5.6-terra} obtuvo la mejor relación entre acierto, coste y latencia, con un coste de 0,0102 dólares por caso correcto. El agente de serialización alcanzó una fidelidad del 100\,\% en cinco modelos; el sexto obtuvo un 88,9\,\% debido a un incumplimiento del formato. El bucle de autocorrección rescató tres extracciones cuando las instrucciones eran ambiguas, pero no corrigió errores de clasificación.
+
+El trabajo también identificó ocho defectos de instrumentación. Algunos produjeron métricas estables pero incorrectas, lo que demuestra que repetir un experimento no compensa una referencia o un procedimiento de evaluación defectuosos. En conjunto, los resultados respaldan una arquitectura híbrida: los modelos de lenguaje interpretan las peticiones y los componentes deterministas validan la operación y generan la salida final.
+
+\medskip
+
+\noindent\textbf{Palabras clave:} modelos de lenguaje, sistemas multiagente, derivados financieros, permutas de tipos de interés, \textit{Request for Quote}, \textit{Protocol Buffers}, extracción estructurada, validación determinista.
+
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
+
+Derivative pricing and valuation requests may be expressed in natural language through full sentences, abbreviations, or financial desk shorthand. Before these requests can be processed, the product must be identified and its terms must be extracted and converted into a complete and consistent structure. An error at this stage may alter the transaction or introduce information that the requester did not provide.
+
+This thesis designs, implements, and evaluates a system that transforms interest rate swap (\textit{IRS}) requests into a \textit{Request for Quote} (\textit{RFQ}) defined using \textit{Protocol Buffers}. The solution uses an orchestrator agent to classify the product and a specialist agent to interpret its financial terms. A deterministic validator then checks the completeness and financial consistency of the transaction. When it detects a correctable extraction error, it returns the diagnosis to the specialist through a loop limited to five attempts. Finally, a deterministic mapper generates the \textit{RFQ}. A third agent reproduces this serialization for experimental purposes only.
+
+The system is limited to vanilla EUR and USD interest rate swaps with nominal maturities of at least one year. The evaluation uses 23 cases divided into five families: quotations, valuations, trading-desk shorthand, incomplete or inconsistent requests, and unsupported products. Six OpenAI and Anthropic models are compared using classification, validation, field accuracy, exact match, serialization fidelity, cost, and latency metrics.
+
+Four models completed all 23 cases correctly. \texttt{gpt-5.6-terra} achieved the best balance between accuracy, cost, and latency, with a cost of USD 0.0102 per correct case. The serialization agent achieved 100\,\% fidelity with five models; the sixth obtained 88.9\,\% because it failed to follow the required output format. The self-correction loop recovered three extraction errors when the instructions were ambiguous, but it could not correct classification errors.
+
+The project also identified eight instrumentation defects. Some of them produced stable but incorrect metrics, showing that repeating an experiment cannot compensate for a defective reference or evaluation procedure. Overall, the results support a hybrid architecture: language models interpret the requests, while deterministic components validate the transaction and generate the final output.
+
+\medskip
+
+\noindent\textbf{Keywords:} large language models, multi-agent systems, financial derivatives, interest rate swaps, \textit{Request for Quote}, \textit{Protocol Buffers}, structured extraction, deterministic validation.

@@ -1,0 +1,251 @@
+\chapter{Marco teórico}
+\label{cap:marco_teorico}
+
+Este capítulo presenta los conceptos necesarios para comprender el problema. Explica los derivados y los \textit{Interest Rate Swaps}, el flujo de una petición financiera, las representaciones estructuradas, \textit{Protocol Buffers}, los modelos de lenguaje y los sistemas multiagente. Las decisiones específicas de la solución se desarrollan en el capítulo 6.
+
+\section{Derivados financieros y procesos de valoración}
+\label{sec:derivados_valoracion}
+
+Un derivado financiero es un contrato cuyo valor depende de una variable subyacente, como un tipo de interés, una divisa, una acción o una materia prima. Los derivados se utilizan para cubrir riesgos, adoptar posiciones de mercado o modificar las características financieras de una cartera \citep{hull2021derivatives}.
+
+Sus categorías principales son los contratos a plazo, los futuros, las opciones y los \textit{swaps}. Los contratos a plazo y los futuros fijan hoy las condiciones de una operación futura; las opciones conceden un derecho sin imponer su ejercicio; y los \textit{swaps} intercambian flujos calculados mediante reglas diferentes.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Principales categorías de derivados financieros}
+\label{tab:tipos_derivados}
+\begin{tabular}{|P{3.0cm}|P{5.2cm}|P{4.7cm}|}
+\hline
+\textbf{Producto} & \textbf{Estructura básica} & \textbf{Variable habitual} \\
+\hline
+Contrato a plazo & Operación futura bajo condiciones fijadas hoy. & Precio, tipo de interés o tipo de cambio. \\
+\hline
+Futuro & Contrato estandarizado negociado en un mercado organizado. & Índices, tipos, divisas o materias primas. \\
+\hline
+Opción & Derecho a comprar o vender sin obligación de ejercerlo. & Precio y volatilidad del subyacente. \\
+\hline
+\textit{Swap} & Intercambio de conjuntos de flujos. & Tipos de interés, divisas o crédito. \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia a partir de \textcite{hull2021derivatives}.}
+\end{table}
+
+Valorar un derivado consiste en calcular el valor actual de sus flujos futuros. De forma general:
+
+\begin{equation}
+V(t)=\sum_{i=1}^{n}D(t,T_i)\,\mathbb{E}_t[CF_i],
+\end{equation}
+
+donde \(CF_i\) es el flujo en \(T_i\), \(D(t,T_i)\) su factor de descuento y \(\mathbb{E}_t\) su valor esperado con la información disponible. El cálculo concreto depende del producto, sus términos, las convenciones y los datos de mercado \citep{ausin2025quantitative}.
+
+Antes de valorar, la operación debe estar definida y validada. El motor financiero no puede corregir una fecha imposible, una combinación incompatible de divisa e índice o un dato obligatorio ausente. Este trabajo aborda esa fase previa: produce una descripción formal de la operación, no su precio ni una recomendación de mercado.
+
+\section{Interest Rate Swaps}
+\label{sec:interest_rate_swaps}
+
+Un \textit{Interest Rate Swap} (\textit{IRS}) es un contrato en el que dos partes intercambian intereses calculados sobre un mismo nocional y en una misma divisa. En su forma \textit{vanilla}, una parte paga un tipo fijo y recibe un tipo variable; la contraparte adopta la posición opuesta. El nocional sirve para calcular los flujos y normalmente no se intercambia \citep{hull2021derivatives}.
+
+La operación contiene dos patas con calendarios y convenciones propios \citep[Definición~2.19, p.~59]{ausin2025quantitative}. Para el periodo entre \(T_{i-1}\) y \(T_i\), sus flujos pueden expresarse como:
+
+\begin{align}
+CF^{\text{fijo}}_i &= N\,K\,\alpha^{\text{fijo}}_i,\\
+CF^{\text{flotante}}_i &= N\,(L_i+s)\,\alpha^{\text{flotante}}_i,
+\end{align}
+
+donde \(N\) es el nocional, \(K\) el tipo fijo, \(L_i\) el tipo variable, \(s\) el diferencial y \(\alpha_i\) la fracción de año de cada pata. Un pagador de fijo entrega los primeros flujos y recibe los segundos; un receptor de fijo hace lo contrario.
+
+\begin{figure}[H]
+    \centering
+    \fbox{
+        \begin{minipage}{0.82\textwidth}
+            \centering
+            \textbf{Parte A: pagadora de fijo}\\[7pt]
+            \begin{tabular}{P{4.8cm} P{1.3cm} P{4.8cm}}
+                Pago fijo: \(N\,K\) & $\longrightarrow$ & Parte B \\
+                Parte A & $\longleftarrow$ & Pago variable: \(N\,(L_i+s)\)
+            \end{tabular}\\[7pt]
+            {\small Cada flujo se ajusta por la fracción de año de su periodo.}
+        \end{minipage}
+    }
+    \caption[Estructura básica de un IRS]{Intercambio de flujos desde la perspectiva de una parte pagadora de fijo}
+    \label{fig:estructura_irs}
+    \floatfoot{Fuente: elaboración propia a partir de \textcite{hull2021derivatives}.}
+\end{figure}
+
+Desde la perspectiva del receptor de fijo, el valor es \(V_{\text{fija}}-V_{\text{flotante}}\); para el pagador, el signo se invierte. En una cotización a tipo par se busca el \(K\) que hace cero el valor inicial. En una valoración, el tipo ya está pactado y se calcula el valor de mercado de la operación. Esta diferencia explica por qué una cotización omite el tipo fijo y una valoración debe incluirlo.
+
+El marco moderno utiliza una curva para proyectar la pata flotante y otra para descontar los flujos de ambas patas \citep[sec.~2.4.6.2]{ausin2025quantitative}. Las convenciones dependen además de la divisa y del vencimiento. Las utilizadas en este trabajo se resumen en la Tabla~\ref{tab:convenciones_irs_resumen}.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Convenciones de IRS consideradas en el trabajo}
+\label{tab:convenciones_irs_resumen}
+\begin{tabular}{|P{2.1cm}|P{3.0cm}|P{3.2cm}|P{2.5cm}|P{2.5cm}|}
+\hline
+\textbf{Divisa y plazo} & \textbf{Pata fija} & \textbf{Pata flotante} & \textbf{Descuento} & \textbf{Estimación} \\
+\hline
+EUR, hasta 1 año & Anual, 30U/360 & EURIBOR 3M, trimestral, ACT/360 & EUR-ESTR & EUR-EURIBOR-3M \\
+\hline
+EUR, más de 1 año & Anual, 30U/360 & EURIBOR 6M, semestral, ACT/360 & EUR-ESTR & EUR-EURIBOR-6M \\
+\hline
+USD, 1 año o más & Anual, ACT/360 & SOFR compuesto, anual, ACT/360 & USD-SOFR & USD-SOFR \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia a partir de OpenGamma Strata y CME Group \citep{opengamma2026strata,cme2026sofrswaps}.}
+\end{table}
+
+En USD, un \textit{swap vanilla} moderno es un OIS contra SOFR compuesto y no utiliza tenor de fijación. La estructura fijo semestral contra SOFR 3M trasladaría indebidamente una convención heredada de LIBOR, cuyos paneles en dólares cesaron en junio de 2023 \citep{arrc2023closing}. Las convenciones permiten derivar atributos ausentes, pero no sustituyen la intención del usuario, como el nocional, las fechas o la dirección.
+
+\section{Peticiones de pricing y flujo RFQ}
+\label{sec:flujo_rfq}
+
+Una \textit{Request for Quote} (\textit{RFQ}) comunica los términos de una operación y solicita una respuesta económica. En una cotización a tipo par, el tipo fijo es la incógnita. En una valoración, ya forma parte del contrato.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Cotización a tipo par y valoración}
+\label{tab:cotizacion_valoracion}
+\begin{tabular}{|P{3.2cm}|P{4.8cm}|P{4.8cm}|}
+\hline
+\textbf{Elemento} & \textbf{Cotización} & \textbf{Valoración} \\
+\hline
+Propósito & Obtener el tipo fijo de una nueva operación. & Calcular el valor de una operación existente. \\
+\hline
+Tipo fijo & Ausente; es la incógnita. & Presente; ya fue pactado. \\
+\hline
+Resultado posterior & Tipo que hace cero el valor inicial. & Valor de mercado en la fecha solicitada. \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia a partir de \textcite[ec.~2.42]{ausin2025quantitative}.}
+\end{table}
+
+La petición puede combinar frases, abreviaturas y términos relativos. Antes de llegar a un motor debe identificarse el producto, extraerse y normalizarse sus términos, comprobarse la operación y generarse una estructura procesable. Un producto ajeno al alcance debe rechazarse en lugar de aproximarse mediante un \textit{IRS}.
+
+La representación estructurada facilita que varios componentes compartan la misma interpretación. Iniciativas como el \textit{Common Domain Model} de ISDA persiguen precisamente una definición común de productos y acontecimientos financieros \citep{isda2023cdm}. La salida de este trabajo cumple una función más acotada: formaliza y valida la petición para un proceso posterior, sin sustituir al motor de valoración.
+
+\section{Representación estructurada de productos financieros}
+\label{sec:representacion_estructurada}
+
+Una descripción humana no especifica necesariamente qué campos existen, qué tipo admite cada uno ni cómo se relacionan. Una representación estructurada convierte los términos contractuales en un modelo de datos. En un \textit{IRS}, algunos campos pertenecen a la operación completa y otros a una pata concreta.
+
+La estructura no garantiza el significado. Una fecha puede tener un formato válido y preceder al inicio; un índice puede existir y ser incompatible con la divisa. Por ello deben distinguirse tres niveles:
+
+\begin{table}[H]
+\centering
+\small
+\caption{Niveles de control de una representación financiera}
+\label{tab:niveles_validacion_datos}
+\begin{tabular}{|P{3.1cm}|P{4.8cm}|P{4.9cm}|}
+\hline
+\textbf{Nivel} & \textbf{Qué comprueba} & \textbf{Ejemplo} \\
+\hline
+Estructura & Campos, tipos y submensajes admitidos. & El nocional es numérico y existen dos patas. \\
+\hline
+Coherencia & Relaciones entre los términos. & El vencimiento sigue al inicio y el índice corresponde a la divisa. \\
+\hline
+Significado & Correspondencia con la petición y las convenciones. & Una cotización omite el tipo fijo. \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia.}
+\end{table}
+
+JSON y XML son formatos generales. FpML, basado en XML, aporta un estándar amplio para derivados, mientras que ISDA CDM modela productos y acontecimientos del ciclo de vida \citep{fpml-home,isda2023cdm}. Estas alternativas favorecen la interoperabilidad, pero su amplitud supera la necesaria para estudiar un único producto. Un esquema específico es más sencillo de controlar, aunque reduce la compatibilidad externa.
+
+En este trabajo, la representación sigue la estructura financiera de dos patas y sirve también para evaluar las respuestas campo a campo. La elección concreta de tecnología y sus alternativas se justifican en el capítulo 6.
+
+\section{Protocol Buffers}
+\label{sec:protocol_buffers}
+
+\textit{Protocol Buffers} es un mecanismo de definición y serialización de datos estructurados. Un archivo \texttt{.proto} declara mensajes, campos, números identificadores, tipos, enumeraciones, submensajes y listas. A partir de él se generan clases para distintos lenguajes \citep{protobuf-overview,google-protobuf-doc}.
+
+El esquema es el contrato; cada mensaje es una instancia. Los números de campo forman parte de la serialización y deben mantenerse estables al evolucionar el contrato. Protobuf admite una representación binaria compacta y un formato de texto legible. Este último resulta útil para inspeccionar y comparar las respuestas de modelos.
+
+Protobuf aporta tipos y estructura, pero no semántica financiera. Puede exigir un número o una enumeración, pero no comprobar el orden de las fechas ni la compatibilidad entre divisa e índice. Estas reglas requieren validación adicional.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Responsabilidades de protobuf y de la validación financiera}
+\label{tab:protobuf_validacion}
+\begin{tabular}{|P{4.0cm}|P{4.4cm}|P{4.4cm}|}
+\hline
+\textbf{Comprobación} & \textbf{Protocol Buffers} & \textbf{Validador} \\
+\hline
+Nocional & Comprueba el tipo numérico. & Comprueba que sea positivo. \\
+\hline
+Fechas & Almacena cadenas. & Comprueba formato y orden. \\
+\hline
+Patas & Define submensajes separados. & Comprueba sus relaciones financieras. \\
+\hline
+Propósito & Restringe los valores de la enumeración. & Comprueba su relación con el tipo fijo. \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia.}
+\end{table}
+
+Esta separación permite compartir un contrato único sin confundir una instancia analizable con una operación correcta.
+
+\section{Modelos de lenguaje de gran tamaño}
+\label{sec:modelos_lenguaje}
+
+Los \textit{Large Language Models} (LLM) generan secuencias a partir del contexto y de patrones aprendidos en grandes colecciones de texto. Mediante instrucciones pueden clasificar, responder preguntas y extraer información sin entrenar un modelo distinto para cada plantilla \citep{mialon2024augmented,shah2023finllms}.
+
+La entrada se divide en \textit{tokens}. El \textit{prompt} describe la tarea, el contexto, las reglas y el formato esperado. En aprendizaje en contexto, estas instrucciones adaptan el comportamiento sin modificar los parámetros del modelo. La calidad depende tanto de la capacidad del modelo como de la precisión de la especificación.
+
+Los LLM pueden interpretar idiomas, abreviaturas y expresiones equivalentes, pero su generación es probabilística. Pueden omitir, alterar o añadir términos y devolver contenido correcto en un formato no procesable. Imponer una estructura no elimina estos riesgos y puede afectar al comportamiento \citep{tam2024formatrestrictions}.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Capacidades y riesgos de los modelos de lenguaje en la tarea}
+\label{tab:capacidades_limitaciones_llm}
+\begin{tabular}{|P{4.0cm}|P{4.4cm}|P{4.4cm}|}
+\hline
+\textbf{Capacidad} & \textbf{Aplicación} & \textbf{Riesgo} \\
+\hline
+Comprensión variable & Español, inglés y jerga. & Interpretación ambigua. \\
+\hline
+Extracción estructurada & Conversión en campos financieros. & Omisión, error o alucinación. \\
+\hline
+Uso de contexto & Instrucciones, convenciones y esquema. & Aplicación literal de una regla defectuosa. \\
+\hline
+Generación de formato & Producción de \textit{textproto}. & Texto o delimitadores no permitidos. \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia a partir de \textcite{mialon2024augmented} y \textcite{tam2024formatrestrictions}.}
+\end{table}
+
+Por este motivo, los modelos no sustituyen un contrato ni la validación de negocio. Su papel adecuado es interpretar el lenguaje allí donde las reglas cerradas pierden cobertura.
+
+\section{Sistemas multiagente}
+\label{sec:sistemas_multiagente}
+
+Un sistema de agentes distribuye una tarea entre componentes con instrucciones, contexto y contratos diferenciados. Los agentes pueden ejecutarse de forma secuencial, usar herramientas o revisar resultados intermedios \citep{wang2024agentsurvey,mialon2024augmented}.
+
+Una única llamada reduce coste y latencia, pero concentra clasificación, interpretación y formato en una respuesta. La especialización permite limitar el contexto, validar entre etapas y localizar fallos. A cambio, aumenta las llamadas y crea nuevas fronteras donde puede perderse información \citep{anthropic-effective-agents}.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Compromisos de una arquitectura multiagente}
+\label{tab:ventajas_riesgos_multiagente}
+\begin{tabular}{|P{3.6cm}|P{4.6cm}|P{4.6cm}|}
+\hline
+\textbf{Aspecto} & \textbf{Ventaja} & \textbf{Coste o riesgo} \\
+\hline
+Especialización & Tareas e instrucciones acotadas. & Más componentes que mantener. \\
+\hline
+Trazabilidad & Localización de la etapa que falla. & Necesidad de telemetría por etapa. \\
+\hline
+Control intermedio & Validación o corrección antes de continuar. & Mayor latencia y consumo. \\
+\hline
+Contexto & Cada agente recibe solo lo necesario. & Una omisión puede hacer irresoluble la tarea. \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia a partir de \textcite{wang2024agentsurvey} y \textcite{anthropic-effective-agents}.}
+\end{table}
+
+La literatura no permite asumir que más agentes producen siempre un mejor resultado. Su utilidad depende de que la especialización y los controles compensen el coste adicional. El diseño adoptado y la ausencia de una comparación monolítica se explican en los capítulos 6 y 11.

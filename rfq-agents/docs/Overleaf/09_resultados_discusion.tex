@@ -1,0 +1,424 @@
+\chapter{Resultados y discusión}
+
+Este capítulo presenta los resultados obtenidos con los seis modelos evaluados. Primero se comparan sus resultados globales y después se analizan los errores de clasificación, extracción y formato, la fidelidad del agente proto y el funcionamiento del bucle de autocorrección. Por último, se estudian el coste, la latencia y los defectos de instrumentación detectados durante el trabajo. El objetivo no es limitarse a ordenar los modelos por porcentaje de acierto, sino explicar qué falló, por qué ocurrió y qué consecuencias tiene para el diseño de la solución.
+
+
+\section{Resultados globales por modelo}
+\label{sec:resultados_globales}
+
+La comparación final incluye seis modelos evaluados sobre los mismos 23 casos. La Tabla~\ref{tab:resultados_globales} presenta el acierto en clasificación, estado de validación, coincidencia exacta y exactitud media por campo. El resultado principal es el estado de validación correcto, ya que comprueba si cada petición termina como \texttt{VALID}, \texttt{INVALID} o \texttt{NOT\_RUN} según su referencia.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Resultados globales por modelo}
+\label{tab:resultados_globales}
+\begin{tabular}{|P{3.3cm}|P{2.3cm}|P{3.5cm}|P{2.3cm}|P{2.0cm}|}
+\hline
+\textbf{Modelo} & \textbf{Clasificación} & \textbf{Validación correcta e IC 95\,\%} & \textbf{Coincidencia exacta} & \textbf{Campos} \\
+\hline
+\texttt{gpt-5.6-luna} & 22/23 & 22/23; [79,0\,\%, 99,2\,\%] & 18/23 & 93,2\,\% \\
+\hline
+\texttt{gpt-5.6-terra} & 23/23 & 23/23; [85,7\,\%, 100\,\%] & 23/23 & 100\,\% \\
+\hline
+\texttt{gpt-5.6-sol} & 23/23 & 23/23; [85,7\,\%, 100\,\%] & 23/23 & 100\,\% \\
+\hline
+\texttt{claude-haiku-4-5} & 19/23 & 13/23; [36,8\,\%, 74,4\,\%] & 14/23 & 52,8\,\% \\
+\hline
+\texttt{claude-sonnet-5} & 23/23 & 23/23; [85,7\,\%, 100\,\%] & 23/23 & 100\,\% \\
+\hline
+\texttt{claude-opus-5} & 23/23 & 23/23; [85,7\,\%, 100\,\%] & 23/23 & 100\,\% \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia a partir de las tandas finales archivadas. Los intervalos corresponden al método de Wilson.}
+\end{table}
+
+Cuatro modelos resolvieron correctamente los 23 casos: \texttt{gpt-5.6-terra}, \texttt{gpt-5.6-sol}, \texttt{claude-sonnet-5} y \texttt{claude-opus-5}. Los cuatro alcanzaron también una coincidencia exacta y una exactitud por campo del 100\,\%. Esto demuestra que la tarea puede resolverse sin errores con modelos de ambos proveedores.
+
+\texttt{gpt-5.6-luna} obtuvo el estado esperado en 22 de los 23 casos. Su único fallo de clasificación fue \texttt{eur\_contra\_sofr}, que aceptó como \texttt{IRS} cuando debía rechazarlo. La validación posterior impidió emitir una operación incoherente, pero el caso sigue siendo incorrecto porque no se detuvo en la etapa prevista. Su coincidencia exacta fue menor, 18 de 23 casos, debido principalmente a errores en los calendarios de pago.
+
+\texttt{claude-haiku-4-5} clasificó correctamente 19 de los 23 casos, pero solo obtuvo el estado de validación esperado en 13. La diferencia se debe principalmente a respuestas mal formadas del especialista: el orquestador había clasificado correctamente la petición como \texttt{IRS}, pero la salida posterior no podía analizarse. También falló los tres casos no valorables. Estos errores se estudian por separado en el apartado siguiente.
+
+La coincidencia exacta de \texttt{claude-haiku-4-5}, 14 de 23 casos, supera en uno su resultado de validación. Esta diferencia no representa una mejor capacidad de extracción. Como se explicó en el apartado 8.4, una respuesta mal formada ante un producto no soportado puede comparar dos conjuntos vacíos de campos y contar como coincidencia exacta, aunque falle la clasificación y el estado de validación. Por este motivo, la validación correcta se utiliza como resultado principal y las demás métricas sirven para localizar el origen de los fallos.
+
+Los intervalos de Wilson muestran que el tamaño de la batería no permite interpretar un 100\,\% observado como una garantía de rendimiento perfecto. Para los cuatro modelos con 23 aciertos, el límite inferior del intervalo es 85,7\,\%. El intervalo de \texttt{gpt-5.6-luna} se solapa con ellos, por lo que su diferencia de un caso no basta para establecer una diferencia estadística.
+
+La comparación pareada sí encuentra una diferencia entre \texttt{claude-haiku-4-5} y los modelos \texttt{claude-sonnet-5} y \texttt{claude-opus-5}. En ambos contrastes aparecen diez pares discordantes, todos favorables al modelo de mayor capacidad, con \(p=0{,}002\). En cambio, los demás pares no reúnen suficientes discordancias para obtener una conclusión estadística. La ausencia de significación en esos casos indica falta de potencia, no igualdad entre los modelos.
+
+En conjunto, cuatro de los seis modelos completaron la batería sin fallos. La capacidad deja así de ser el único criterio de selección entre ellos. Cuando varios modelos obtienen el mismo resultado, el consumo de tokens, el coste y la latencia pasan a determinar cuál ofrece la mejor opción para esta tarea. Estas diferencias se presentan en el apartado 9.5.
+
+
+\section{Errores de clasificación, extracción y formato}
+\label{sec:errores_clasificacion_extraccion}
+
+Los resultados globales ocultan diferencias importantes entre los tipos de error. Un modelo puede rechazar una petición válida, aceptar un producto fuera de alcance, extraer mal un término o devolver contenido correcto en un formato que el sistema no puede procesar. Este apartado separa esos comportamientos.
+
+Cuatro modelos no registraron errores en la configuración final: \texttt{gpt-5.6-terra}, \texttt{gpt-5.6-sol}, \texttt{claude-sonnet-5} y \texttt{claude-opus-5}. Todos clasificaron correctamente los 23 casos y reprodujeron sin discrepancias los campos de las operaciones aplicables. Los errores se concentraron en \texttt{gpt-5.6-luna} y \texttt{claude-haiku-4-5}.
+
+La Tabla~\ref{tab:errores_modelos} resume los principales modos de fallo. Las categorías no son excluyentes: una misma petición puede contener un error de clasificación y otro posterior de formato.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Errores observados en la configuración final}
+\label{tab:errores_modelos}
+\begin{tabular}{|P{3.5cm}|P{2.8cm}|P{3.2cm}|P{3.2cm}|}
+\hline
+\textbf{Modelo} & \textbf{Clasificación incorrecta} & \textbf{Casos con discrepancias de campos} & \textbf{Salidas mal formadas del especialista} \\
+\hline
+\texttt{gpt-5.6-luna} & 1 & 5 & 0 \\
+\hline
+\texttt{gpt-5.6-terra} & 0 & 0 & 0 \\
+\hline
+\texttt{gpt-5.6-sol} & 0 & 0 & 0 \\
+\hline
+\texttt{claude-haiku-4-5} & 4 & No comparable en las salidas no analizables & 7 \\
+\hline
+\texttt{claude-sonnet-5} & 0 & 0 & 0 \\
+\hline
+\texttt{claude-opus-5} & 0 & 0 & 0 \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia a partir de las respuestas archivadas del orquestador y del especialista. Las categorías pueden coincidir en un mismo caso.}
+\end{table}
+
+\texttt{gpt-5.6-luna} cometió un falso positivo de clasificación en \texttt{eur\_contra\_sofr}. La petición describía un \textit{swap} denominado en EUR contra SOFR, una combinación incompatible con el alcance definido. El orquestador lo clasificó como \texttt{IRS} y permitió que avanzara hasta la extracción. El validador detectó después la incompatibilidad entre la divisa y el índice e impidió emitir la \textit{RFQ}. Por tanto, la barrera determinista evitó una salida incorrecta, pero el sistema no detuvo el producto en la etapa prevista.
+
+Ese falso positivo explica las 19 alucinaciones registradas para \texttt{gpt-5.6-luna}. Como la referencia de un producto no soportado no contiene términos financieros, casi todos los campos generados por el especialista se contabilizaron como \texttt{HALLUCINATED}. No se trata de 19 decisiones independientes, sino de la consecuencia de aceptar una única petición que debía haberse rechazado.
+
+La coincidencia exacta de \texttt{gpt-5.6-luna} fue de 18/23. Además del falso positivo, cuatro operaciones válidas presentaron discrepancias en sus campos: \texttt{en\_spot\_5y}, \texttt{pay\_5y\_50m\_spot}, \texttt{eur\_payer\_5y} y \texttt{forward\_start\_2y1y}. En los tres primeros casos, el error se limitó al calendario de pagos de la pata flotante. En la estructura diferida aparecieron diferencias en el tenor, la frecuencia, la curva de estimación y las fechas de pago de esa pata.
+
+Estas cuatro operaciones superaron la validación a pesar de no coincidir exactamente con los casos de referencia. Esto muestra que una operación puede cumplir las comprobaciones generales de coherencia y, al mismo tiempo, diferir de la referencia en términos concretos. Por esa razón, el experimento mide por separado el estado de validación y la coincidencia exacta.
+
+Los fallos de \texttt{claude-haiku-4-5} fueron distintos. Las respuestas reales del orquestador muestran 19 clasificaciones correctas sobre 23. Los cuatro errores fueron:
+
+\begin{itemize}
+    \item \texttt{forward\_start\_2y1y}, rechazado como no soportado;
+    \item \texttt{fechas\_desordenadas}, rechazado antes de llegar al validador;
+    \item \texttt{eur\_periodo\_roto}, rechazado como no soportado;
+    \item \texttt{menos\_de\_un\_ano}, aceptado como \texttt{IRS} cuando debía rechazarse.
+\end{itemize}
+
+En otros seis casos, el orquestador clasificó correctamente la petición como \texttt{IRS}, pero el especialista envolvió el mensaje \textit{textproto} en delimitadores de Markdown. El contenido no podía analizarse directamente contra el esquema y el evaluador lo registró como una salida mal formada. Los casos afectados fueron \texttt{es\_spot\_5y}, \texttt{abreviado\_eur\_val}, \texttt{abreviado\_usd\_val}, \texttt{sin\_direccion}, \texttt{sin\_nocional} y \texttt{usd\_sofr\_ois\_3y}.
+
+El séptimo error de formato del especialista apareció en \texttt{menos\_de\_un\_ano}. Después de aceptar incorrectamente el producto, el primer intento generó términos estructurados. El validador pidió una corrección y la respuesta posterior fue una explicación en prosa, no el mensaje \textit{textproto} exigido. Este caso acumula así un error inicial de clasificación y un incumplimiento posterior del contrato de salida.
+
+Las salidas con delimitadores de Markdown conservaban, en general, los términos financieros dentro del bloque. Sin embargo, el criterio experimental las considera incorrectas porque el componente siguiente necesita recibir directamente un mensaje compatible con el esquema. En una arquitectura encadenada, respetar el formato forma parte de la tarea: una respuesta comprensible para una persona puede seguir siendo inutilizable para el sistema.
+
+La clasificación de \texttt{claude-haiku-4-5} tuvo que reconstruirse desde las respuestas originales del orquestador. La base archivada mostraba 13/23 porque un fallo posterior del especialista sustituía por \texttt{MALFORMED} una clasificación previa correcta. La revisión de las llamadas conservadas permitió recuperar el resultado real de 19/23. Este defecto del evaluador se analiza junto con los demás problemas de instrumentación en el apartado 9.6.
+
+En conjunto, \texttt{gpt-5.6-luna} falló principalmente en una frontera de producto y en la generación de calendarios. \texttt{claude-haiku-4-5} combinó cuatro errores de clasificación con siete salidas mal formadas del especialista. Los cuatro modelos restantes no presentaron errores en la batería final. Esta diferencia confirma que el porcentaje global debe acompañarse de un análisis de la etapa y la causa de cada fallo.
+
+
+\section{Fidelidad de serialización del agente proto}
+\label{sec:fidelidad_proto}
+
+El agente proto recibe los términos ya validados y debe convertirlos en la misma \textit{RFQ} que genera el mapeador determinista. No interpreta la petición original ni decide si la operación es válida. Su única tarea consiste en respetar el esquema y copiar todos los valores, incluidos los calendarios de pago.
+
+La Tabla~\ref{tab:fidelidad_proto} muestra los resultados de las tandas finales. Los casos marcados como \texttt{NOT\_RUN} no entran en el cálculo porque el flujo se detuvo antes de ejecutar el agente. Las salidas que no llegaron a este componente por un fallo previo tampoco forman parte del denominador.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Fidelidad de serialización del agente proto}
+\label{tab:fidelidad_proto}
+\begin{tabular}{|P{3.5cm}|P{2.0cm}|P{2.2cm}|P{2.5cm}|P{2.4cm}|}
+\hline
+\textbf{Modelo} & \textbf{\texttt{MATCH}} & \textbf{\texttt{MISMATCH}} & \textbf{\texttt{UNPARSEABLE}} & \textbf{Fidelidad} \\
+\hline
+\texttt{gpt-5.6-luna} & 16 & 0 & 0 & 16/16 (100\,\%) \\
+\hline
+\texttt{gpt-5.6-terra} & 15 & 0 & 0 & 15/15 (100\,\%) \\
+\hline
+\texttt{gpt-5.6-sol} & 15 & 0 & 0 & 15/15 (100\,\%) \\
+\hline
+\texttt{claude-haiku-4-5} & 8 & 0 & 1 & 8/9 (88,9\,\%) \\
+\hline
+\texttt{claude-sonnet-5} & 15 & 0 & 0 & 15/15 (100\,\%) \\
+\hline
+\texttt{claude-opus-5} & 15 & 0 & 0 & 15/15 (100\,\%) \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia a partir de las tandas finales archivadas. El denominador incluye únicamente las ejecuciones en las que el agente proto devolvió una respuesta.}
+\end{table}
+
+Cinco modelos alcanzaron una fidelidad del 100\,\%. En todas sus ejecuciones, el mensaje generado pudo analizarse contra el esquema y coincidió con la salida del mapeador. No se registró ningún caso \texttt{MISMATCH}: cuando la respuesta tuvo un formato válido, todos los campos coincidieron.
+
+\texttt{gpt-5.6-luna} presenta 16 ejecuciones en lugar de 15 porque aceptó erróneamente \texttt{eur\_contra\_sofr} como un \texttt{IRS}. El caso avanzó por el flujo y produjo una ejecución adicional del agente proto. Esta observación no corrige el fallo de clasificación, pero sí muestra que el agente serializó correctamente los términos que recibió.
+
+El único fallo apareció en \texttt{claude-haiku-4-5}. En el caso \texttt{eur\_receiver\_1y}, el agente envolvió la \textit{RFQ} en delimitadores de Markdown. La respuesta contenía la estructura solicitada, pero no podía analizarse directamente como \textit{textproto}, por lo que se registró como \texttt{UNPARSEABLE}. Es el mismo tipo de incumplimiento de formato observado en varias respuestas de su agente especialista.
+
+Los resultados de OpenAI cuentan además con evidencia de varias tandas. Los tres modelos se ejecutaron en tres mediciones comparables y el agente proto mantuvo una coincidencia completa en las nueve combinaciones de modelo y tanda. Esta repetición incluye operaciones con submensajes anidados y listas extensas de fechas de pago. Por tanto, el resultado no depende de un único caso sencillo ni de una sola ejecución agregada.
+
+La ausencia de \texttt{MISMATCH} indica que la dificultad no estuvo en copiar los valores al esquema. El único fallo de la configuración final fue de formato. Cuando el mensaje pudo analizarse, la serialización coincidió con la referencia determinista.
+
+Este resultado responde a la pregunta que justificaba mantener el agente proto durante el experimento: los modelos evaluados pueden reproducir una \textit{RFQ} anidada con alta fidelidad cuando reciben los términos completos y el esquema. Sin embargo, esta capacidad no justifica su uso en la salida operativa. El mapeador determinista realiza la misma tarea sin consumir tokens, con menor latencia y sin riesgo de introducir una respuesta mal formada.
+
+Por tanto, la decisión de conservar el mapeador no se basa en que los modelos sean incapaces de serializar. Se basa en que esta etapa no requiere interpretación. Utilizar un agente para copiar datos ya validados añade coste y un posible fallo de formato sin aportar información nueva. El agente proto se mantiene como instrumento experimental, mientras que el mapeador determinista sigue siendo el responsable de la \textit{RFQ} emitida.
+
+
+\section{Funcionamiento del bucle de autocorrección}
+\label{sec:bucle_autocorreccion}
+
+El bucle de autocorrección permite repetir la extracción cuando el validador detecta un error que el especialista puede corregir. El diagnóstico se añade a la petición del siguiente intento y el proceso puede realizar hasta cinco pasadas. Si falta un dato que el usuario no proporcionó, el sistema termina sin reintentar porque el modelo no puede recuperar esa información.
+
+La Tabla~\ref{tab:resultados_bucle} resume el uso del bucle durante las principales condiciones experimentales. Se distingue entre activación y rescate: una activación indica que se realizó más de una pasada, mientras que un rescate exige que el nuevo intento corrigiera el resultado.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Activaciones y casos rescatados por el bucle de autocorrección}
+\label{tab:resultados_bucle}
+\begin{tabular}{|P{5.2cm}|P{2.3cm}|P{2.8cm}|P{3.2cm}|}
+\hline
+\textbf{Condición} & \textbf{Activaciones} & \textbf{Casos rescatados} & \textbf{Resultado} \\
+\hline
+Instrucción ambigua, primera comparación & 4 & 3 & El segundo intento corrigió tres extracciones. \\
+\hline
+Instrucción ambigua, segunda comparación & 1 & 0 & El único reintento no corrigió el caso. \\
+\hline
+Instrucción corregida, OpenAI & 1 & 0 & El error estaba fuera del alcance del bucle. \\
+\hline
+Instrucción corregida, Anthropic & 0 observadas & 0 & Siete ejecuciones de \texttt{haiku} no pudieron evaluarse. \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia a partir de las tandas archivadas.}
+\end{table}
+
+En la primera comparación con la instrucción ambigua, el bucle se activó cuatro veces y corrigió tres casos. \texttt{gpt-5.6-luna} resolvió en la segunda pasada \texttt{eur\_no\_estandar\_3m} y \texttt{pay\_5y\_50m\_spot}. \texttt{gpt-5.6-terra} corrigió \texttt{es\_fecha\_explicita\_10y}. En los tres casos, el primer resultado contenía términos incompatibles con la petición o con las convenciones esperadas, y el diagnóstico del validador proporcionó información suficiente para corregirlos.
+
+Este resultado demuestra que el mecanismo puede recuperar errores de extracción. El bucle no se limita a repetir la misma petición: incorpora las causas concretas detectadas por el validador y pide al especialista que modifique únicamente esos puntos.
+
+El comportamiento cambió al corregir la instrucción del orquestador. En la configuración final de OpenAI, \texttt{gpt-5.6-terra} y \texttt{gpt-5.6-sol} resolvieron los 23 casos en la primera pasada. \texttt{gpt-5.6-luna} realizó un segundo intento únicamente en \texttt{eur\_contra\_sofr}, pero no logró rescatarlo. En Anthropic no se registró ninguna segunda pasada. Sin embargo, siete ejecuciones de \texttt{claude-haiku-4-5} terminaron con una salida mal formada y no conservaron un número de iteraciones, por lo que el funcionamiento del bucle no puede evaluarse en esos casos.
+
+La falta de rescate en \texttt{eur\_contra\_sofr} se explica por la posición del error. El orquestador aceptó como \texttt{IRS} una petición en EUR contra SOFR que debía clasificar como no soportada. El bucle comienza después de esa decisión y solo repite la extracción del especialista. Por tanto, puede modificar los términos extraídos, pero no revisar la clasificación inicial.
+
+La Figura~\ref{fig:alcance_bucle} resume este límite.
+
+\begin{figure}[H]
+    \centering
+    \fbox{
+        \begin{minipage}{0.84\textwidth}
+            \centering
+            \textbf{Clasificación del orquestador}\\
+            {\small Fuera del bucle de autocorrección}\\[5pt]
+            $\downarrow$\\[5pt]
+            \textbf{Extracción del especialista}\\
+            $\downarrow$\\[5pt]
+            \textbf{Validación determinista}\\[3pt]
+            \begin{tabular}{P{5.7cm} P{5.7cm}}
+                Error corregible $\rightarrow$ nueva extracción &
+                Dato ausente $\rightarrow$ fin sin reintento
+            \end{tabular}\\[5pt]
+            $\uparrow$\\[-2pt]
+            {\small Máximo de cinco pasadas}
+        \end{minipage}
+    }
+    \caption[Alcance del bucle de autocorrección]{Etapas incluidas y excluidas del bucle de autocorrección}
+    \label{fig:alcance_bucle}
+    \floatfoot{Fuente: elaboración propia.}
+\end{figure}
+
+Los casos no valorables tampoco deben activar el bucle cuando falta un término obligatorio. En \texttt{sin\_nocional} y \texttt{sin\_direccion}, una nueva llamada no puede obtener información que no aparece en la petición. El sistema devuelve el error correspondiente en lugar de completar el dato o consumir más intentos. Esta decisión evita confundir una omisión del usuario con un error corregible del modelo.
+
+Los resultados muestran que el valor del bucle depende de la calidad de las instrucciones. Con una especificación ambigua, rescató tres operaciones que habrían fallado. Con la instrucción corregida no se observó ningún rescate: los casos con iteraciones registradas se resolvieron en la primera pasada, salvo el falso positivo de \texttt{gpt-5.6-luna}, cuyo error estaba en la clasificación. Las siete salidas mal formadas de \texttt{claude-haiku-4-5} quedan fuera de esta conclusión porque no permiten saber si una segunda pasada habría sido necesaria.
+
+Por tanto, el bucle funciona como una red de seguridad frente a errores de extracción, no como una mejora constante del rendimiento. Su principal limitación es que no puede revisar una clasificación incorrecta. Ampliarlo para incluir esta etapa permitiría tratar falsos positivos como \texttt{eur\_contra\_sofr}, aunque también añadiría coste y latencia al repetir una decisión que actualmente se toma una sola vez.
+
+
+\section{Coste y latencia}
+\label{sec:resultados_coste_latencia}
+
+La Tabla~\ref{tab:resultados_coste_latencia} presenta el coste y la latencia de las tandas finales. El coste por caso válido relaciona el gasto total con el número de casos cuyo estado de validación fue correcto. Esta medida permite comparar modelos con niveles de acierto diferentes.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Coste y latencia por modelo}
+\label{tab:resultados_coste_latencia}
+\begin{tabular}{|P{3.4cm}|P{2.1cm}|P{2.5cm}|P{2.0cm}|P{2.0cm}|}
+\hline
+\textbf{Modelo} & \textbf{Coste por pasada} & \textbf{Coste por caso válido} & \textbf{p50 (ms)} & \textbf{p95 (ms)} \\
+\hline
+\texttt{gpt-5.6-luna} & 0,0278 \$ & 0,0013 \$ & 7.153 & 12.308 \\
+\hline
+\texttt{gpt-5.6-terra} & 0,2353 \$ & 0,0102 \$ & 9.011 & 12.401 \\
+\hline
+\texttt{gpt-5.6-sol} & 0,4178 \$ & 0,0182 \$ & 11.029 & 15.302 \\
+\hline
+\texttt{claude-haiku-4-5} & 0,2641 \$ & 0,0203 \$ & 3.475 & 7.290 \\
+\hline
+\texttt{claude-sonnet-5} & 0,9215 \$ & 0,0401 \$ & 14.405 & 27.343 \\
+\hline
+\texttt{claude-opus-5} & 2,0799 \$ & 0,0904 \$ & 15.252 & 19.336 \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia a partir de las tandas finales archivadas. Los costes se expresan en dólares.}
+\end{table}
+
+\texttt{gpt-5.6-luna} fue el modelo más barato. Su coste por pasada fue de 0,0278 dólares y su coste por caso válido, de 0,0013 dólares. También presentó una latencia mediana baja, de 7.153 ms. Sin embargo, no completó la batería sin errores: obtuvo el estado esperado en 22 de los 23 casos y su coincidencia exacta fue de 18/23.
+
+\texttt{claude-haiku-4-5} fue el modelo más rápido, con una mediana de 3.475 ms. Esta ventaja no se tradujo en eficiencia económica. Su coste por pasada fue de 0,2641 dólares, casi diez veces el de \texttt{gpt-5.6-luna}, y solo resolvió correctamente 13 casos. El coste por resultado correcto aumentó así hasta 0,0203 dólares.
+
+Entre los cuatro modelos que alcanzaron 23/23, \texttt{gpt-5.6-terra} obtuvo el menor coste y la menor latencia mediana. Cada pasada costó 0,2353 dólares, frente a 0,4178 de \texttt{gpt-5.6-sol}, 0,9215 de \texttt{claude-sonnet-5} y 2,0799 de \texttt{claude-opus-5}. Como los cuatro alcanzaron el mismo nivel de acierto, estas diferencias permiten elegir sin asumir una pérdida de calidad observada.
+
+El resultado más relevante aparece al comparar \texttt{gpt-5.6-terra} con \texttt{claude-sonnet-5}. Sus tarifas publicadas eran similares: 2 dólares por millón de tokens de entrada en ambos casos y 12 frente a 10 dólares por millón de tokens de salida. Sin embargo, \texttt{claude-sonnet-5} costó 3,9 veces más por pasada y por caso válido.
+
+La Tabla~\ref{tab:consumo_terra_sonnet} muestra la causa de esta diferencia en el agente especialista, que concentra la mayor parte del procesamiento financiero.
+
+\begin{table}[H]
+\centering
+\small
+\caption[Consumo comparado del agente especialista]
+{Consumo del agente especialista en \texttt{gpt-5.6-terra} y \texttt{claude-sonnet-5}}
+\label{tab:consumo_terra_sonnet}
+\begin{tabular}{|P{4.3cm}|P{4.0cm}|P{4.0cm}|}
+\hline
+\textbf{Medida} & \textbf{\texttt{gpt-5.6-terra}} & \textbf{\texttt{claude-sonnet-5}} \\
+\hline
+Tokens de entrada & 135.829 & 203.287 \\
+\hline
+Tokens de salida & 6.818 & 18.986 \\
+\hline
+Coste del especialista & 0,1243 \$ & 0,5964 \$ \\
+\hline
+Coste total de la pasada & 0,2353 \$ & 0,9215 \$ \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia a partir de las llamadas registradas en las tandas finales.}
+\end{table}
+
+\texttt{claude-sonnet-5} utilizó un 49,7\,\% más de tokens de entrada y 2,8 veces más tokens de salida en el especialista. Además, OpenAI informó de tokens de entrada servidos desde caché, mientras que las llamadas registradas de Anthropic no informaron de tokens leídos desde caché. Estas diferencias explican que dos modelos con tarifas similares tengan costes reales muy distintos para la misma tarea.
+
+El coste de \texttt{claude-sonnet-5} se comprobó de nuevo a partir de la base archivada. La suma de sus 56 llamadas fue de 0,921482 dólares. Como obtuvo 23 estados correctos, su coste por caso válido fue de 0,0401 dólares. Esta comprobación corrige la cifra anterior de 0,0601 dólares, que procedía de una tarifa almacenada antes de su recálculo.
+
+La latencia refuerza la elección de \texttt{gpt-5.6-terra} entre los modelos sin fallos. Su mediana fue de 9.011 ms, frente a 11.029 ms de \texttt{gpt-5.6-sol}, 14.405 ms de \texttt{claude-sonnet-5} y 15.252 ms de \texttt{claude-opus-5}. También presentó el menor percentil 95 de este grupo, con 12.401 ms.
+
+Como se explicó en el apartado 8.6, las latencias de OpenAI incluyen un intento HTTP rechazado al enviar inicialmente la temperatura. Anthropic descarta el parámetro antes de realizar la llamada. Por tanto, la medición contiene una asimetría que perjudica a OpenAI. A pesar de ella, \texttt{gpt-5.6-terra} mantuvo una latencia inferior a la de los modelos de Anthropic que también lograron 23/23.
+
+Los resultados muestran que la tarifa publicada no basta para estimar el coste de una tarea. El número de tokens generados, el uso de caché y las etapas alcanzadas por cada petición cambian el gasto final. Para este sistema, \texttt{gpt-5.6-terra} ofrece la mejor relación entre acierto, coste y latencia: resolvió los 23 casos, fue el modelo más barato entre los que no fallaron y también el más rápido dentro de ese grupo.
+
+
+\section{Defectos de instrumentación}
+\label{sec:defectos_instrumentacion}
+
+Durante el trabajo se identificaron ocho defectos de instrumentación. Estos problemas no procedían necesariamente de los modelos, sino de las instrucciones, las referencias o el código utilizado para medirlos. Su efecto fue relevante: algunas tandas produjeron resultados estables y coherentes que, sin embargo, describían de forma incorrecta la capacidad evaluada.
+
+La Tabla~\ref{tab:defectos_instrumentacion} resume los ocho defectos, el síntoma observado y la corrección aplicada.
+
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Defectos de instrumentación identificados durante la evaluación}
+\label{tab:defectos_instrumentacion}
+\begin{tabular}{|P{0.6cm}|P{3.5cm}|P{4.0cm}|P{5.0cm}|}
+\hline
+\textbf{N.o} & \textbf{Defecto} & \textbf{Efecto observado} & \textbf{Tratamiento} \\
+\hline
+1 & Guardarraíl ambiguo sobre índices a un día & Dos \textit{IRS vanilla} se rechazaron como productos no soportados. & Se aclaró la diferencia entre el índice de la pata flotante y el tipo de producto. \\
+\hline
+2 & Calendarios no enviados al agente proto & La salida del agente no podía coincidir con una referencia que sí contenía las fechas. & Se incluyeron los calendarios entre los términos enviados al agente. \\
+\hline
+3 & Instrucción incorrecta sobre el mensaje raíz & El agente generaba un envoltorio \texttt{RFQ} que el formato de texto protobuf no admite. & Se corrigió la instrucción para indicar que el mensaje raíz es implícito. \\
+\hline
+4 & Diferencial por omisión aplicado solo en el mapeador & La referencia contenía un diferencial igual a cero que el agente nunca había recibido. & La normalización se trasladó antes de los dos consumidores. \\
+\hline
+5 & Diferencial por omisión no aplicado al caso de referencia & Se registraba una alucinación en todos los casos con diferencial ausente. & Se aplicó la misma normalización a la salida extraída y al caso esperado. \\
+\hline
+6 & Caso con fechas contradictorias asignado a la familia incorrecta & Un \textit{IRS} incoherente parecía un fallo de clasificación. & El caso pasó a la familia no valorable para que lo detuviera el validador. \\
+\hline
+7 & Tarifa incorrecta de \texttt{claude-sonnet-5} & El coste registrado quedó inflado un 50\,\%. & Se corrigió la tarifa y se recalcularon los costes desde los tokens archivados. \\
+\hline
+8 & Un fallo posterior sobrescribía la clasificación & La clasificación de \texttt{claude-haiku-4-5} aparecía como 13/23 en lugar de 19/23. & Se reconstruyó el dato desde las respuestas originales del orquestador. \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia a partir del registro de experimentos, el código y las bases de datos archivadas.}
+\end{table}
+
+Los defectos relacionados con la información enviada al agente proto, la instrucción sobre el mensaje raíz y el tratamiento del diferencial explican la evolución inicial de la fidelidad de serialización. Cuatro mediciones consecutivas mostraron una fidelidad del 0\,\%. Después de corregir estos problemas, el mismo modelo alcanzó 7/7 sin cambiar el esquema ni la temperatura. El resultado anterior no medía una incapacidad para serializar estructuras anidadas, sino una comparación que el agente no podía superar con los datos recibidos.
+
+Este caso muestra el principal riesgo de una evaluación automática. Repetir una medición incorrecta no la convierte en válida. Los intervalos de confianza tampoco detectan un sesgo que afecta de la misma forma a todas las ejecuciones. Cuando todos los casos fallan de manera idéntica, debe revisarse primero si la entrada y la referencia reciben el mismo tratamiento.
+
+El quinto defecto siguió el mismo patrón. La normalización añadía un diferencial igual a cero a la salida del modelo, pero no a la referencia. El comparador interpretaba esa diferencia como una alucinación. El error desapareció al aplicar la misma transformación en ambos lados. No fue necesario cambiar el modelo ni sus instrucciones.
+
+El sexto defecto afectó al recorrido esperado de un caso. Una petición con vencimiento anterior al inicio describe un \textit{IRS}, aunque sus datos sean incoherentes. Si se espera que el orquestador la clasifique como no soportada, una respuesta correcta como \texttt{IRS} se registra de forma errónea como fallo. El caso se trasladó a la familia no valorable para que la incoherencia se detectara en la etapa prevista: la validación.
+
+El séptimo defecto afectó al coste. La tanda de \texttt{claude-sonnet-5} se calculó inicialmente con tarifas de 3 y 15 dólares por millón de tokens de entrada y salida, en lugar de 2 y 10 dólares. Como el coste se guarda al realizar cada llamada, corregir el archivo de tarifas no modificaba los registros anteriores. La herramienta \texttt{recompute\_costs.py} permitió reconstruir los importes desde los tokens archivados. El coste correcto de la pasada es 0,921482 dólares y el coste por caso válido, 0,0401 dólares.
+
+El octavo defecto se detectó después del cierre técnico. Cuando el especialista devolvía una salida mal formada, \texttt{evaluate.py} perdía el resultado parcial y sustituía por \texttt{MALFORMED} la clasificación anterior del orquestador. La suma almacenada de \texttt{product\_correct} daba 13/23 para \texttt{claude-haiku-4-5}, pero las respuestas originales mostraban 19/23 clasificaciones correctas.
+
+Este último problema no se corrigió en el código porque el desarrollo ya estaba cerrado. El resultado se reconstruyó desde las llamadas guardadas en la tabla \texttt{api\_calls}. La telemetría permitió separar la respuesta del orquestador del fallo posterior del especialista. Sin ese registro, se habría publicado una cifra incorrecta y no habría sido posible recuperar el resultado real.
+
+La Figura~\ref{fig:revision_instrumentacion} resume el procedimiento aplicado para revisar una métrica anómala.
+
+\begin{figure}[H]
+    \centering
+    \fbox{
+        \begin{minipage}{0.84\textwidth}
+            \centering
+            \textbf{Métrica anómala o fallo sistemático}\\[5pt]
+            $\downarrow$\\[5pt]
+            \textbf{Comprobar la información recibida por el agente}\\[5pt]
+            $\downarrow$\\[5pt]
+            \textbf{Comparar el tratamiento de la salida y la referencia}\\[5pt]
+            $\downarrow$\\[5pt]
+            \textbf{Revisar las respuestas originales de la telemetría}\\[5pt]
+            $\downarrow$\\[5pt]
+            \textbf{Corregir el instrumento o reconstruir la medida}\\[5pt]
+            $\downarrow$\\[5pt]
+            \textbf{Mantener separadas las tandas incompatibles}
+        \end{minipage}
+    }
+    \caption[Revisión de los defectos de instrumentación]{Procedimiento seguido para distinguir un fallo del modelo de un defecto de medición}
+    \label{fig:revision_instrumentacion}
+    \floatfoot{Fuente: elaboración propia.}
+\end{figure}
+
+Los siete primeros defectos se corrigieron antes de cerrar el código. Después de cada cambio, las tandas anteriores se conservaron como evidencia del proceso, pero no se mezclaron con la comparación final. El octavo se trató de forma distinta: se mantuvo el código cerrado y se corrigió el dato mediante una consulta a la evidencia archivada.
+
+Estos defectos no son solo incidencias del desarrollo. Muestran que una evaluación de modelos necesita comprobar tres condiciones antes de atribuir un error: que las instrucciones sean claras, que el agente reciba toda la información necesaria y que la referencia represente una salida alcanzable. La telemetría y la separación por tandas resultaron esenciales para realizar estas comprobaciones y recuperar medidas incorrectas.
+
+
+\section{Discusión de resultados}
+\label{sec:discusion_resultados}
+
+Los resultados permiten extraer cuatro interpretaciones transversales.
+
+\textbf{Primera: la tarea es resoluble, pero el modelo debe elegirse por su comportamiento en el flujo completo.} Cuatro modelos alcanzaron 23/23 sin fallos de campo. Entre ellos, \texttt{gpt-5.6-terra} presentó el menor coste y la menor latencia mediana. No se concluye que sea superior de forma general, sino que ofrece la mejor relación observada para esta arquitectura y esta batería. \texttt{gpt-5.6-luna} reduce el coste a 0,0013 dólares por caso correcto, pero introduce un falso positivo de producto y errores de calendario; solo resulta defendible cuando el ahorro compensa ese riesgo.
+
+\textbf{Segunda: capacidad financiera y cumplimiento del contrato son dimensiones distintas.} En \texttt{claude-haiku-4-5}, varias respuestas contenían términos correctos dentro de delimitadores de Markdown, pero el siguiente componente no podía analizarlas. Su 13/23 en validación mezcla errores de clasificación y formato, no solo desconocimiento financiero. El criterio estricto sigue siendo adecuado porque, en una cadena automática, una respuesta no procesable rompe el flujo aunque sea comprensible para una persona.
+
+\textbf{Tercera: las instrucciones y el alcance de la autocorrección condicionan el rendimiento.} \texttt{gpt-5.6-sol} pasó de 19/23 a 23/23 al corregir una frase, sin cambiar modelo ni casos. El bucle rescató tres extracciones bajo la instrucción ambigua, pero no pudo corregir \texttt{eur\_contra\_sofr} porque la clasificación ocurre antes. Las instrucciones deben tratarse como parte versionada de la solución, y la autocorrección como una red de seguridad limitada, no como una mejora constante.
+
+\textbf{Cuarta: el instrumento de evaluación también debe auditarse.} Los ocho defectos documentados produjeron en algunos casos cifras estables pero falsas. La clasificación de \texttt{claude-haiku-4-5} solo pudo reconstruirse como 19/23 porque la telemetría conservaba las respuestas originales. Repetir un experimento no corrige una referencia asimétrica ni una métrica defectuosa; antes de atribuir un fallo al modelo deben revisarse la instrucción, la información suministrada y la referencia.
+
+Estas interpretaciones respaldan una arquitectura híbrida. El modelo aporta flexibilidad para interpretar la petición; el validador controla la completitud y la coherencia; y el mapeador genera una salida exacta. La fidelidad del agente proto demuestra que los modelos pueden serializar la estructura, pero no justifica pagar una llamada adicional para una tarea determinista.
+
+La Tabla~\ref{tab:decisiones_resultados} resume las decisiones derivadas de la evidencia.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Decisiones derivadas de los resultados}
+\label{tab:decisiones_resultados}
+\begin{tabular}{|P{4.5cm}|P{4.2cm}|P{4.4cm}|}
+\hline
+\textbf{Resultado} & \textbf{Interpretación} & \textbf{Decisión} \\
+\hline
+Cuatro modelos alcanzan 23/23 & La tarea es resoluble con ambos proveedores. & Seleccionar por coste y latencia entre los modelos sin fallos. \\
+\hline
+\texttt{gpt-5.6-terra} ofrece el menor coste entre los modelos perfectos & No se observa una mejora que justifique los modelos más caros. & Utilizarlo como configuración predeterminada. \\
+\hline
+El agente proto coincide siempre que la salida es analizable & La serialización no requiere interpretación. & Mantener el mapeador determinista en producción. \\
+\hline
+El bucle rescata extracción, no clasificación & Su alcance actual es parcial. & Conservarlo como red de seguridad y estudiar su extensión. \\
+\hline
+Las métricas defectuosas pueden ser estables & La repetición no corrige un sesgo sistemático. & Conservar respuestas y auditar entradas y referencias. \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia.}
+\end{table}
+
+Los contrastes estadísticos limitan el alcance de la comparación. \texttt{claude-haiku-4-5} difiere de \texttt{claude-sonnet-5} y \texttt{claude-opus-5} con \(p=0{,}002\). En los demás pares faltan discordancias para obtener potencia suficiente; no deben describirse como equivalentes.
+
+En conjunto, la configuración recomendada combina \texttt{gpt-5.6-terra}, validación previa a la emisión y mapeo determinista. Alcanzó 23/23 con el menor coste y latencia entre las configuraciones sin fallos, dentro de las condiciones y limitaciones declaradas.

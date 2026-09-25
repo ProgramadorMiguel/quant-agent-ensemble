@@ -782,9 +782,9 @@ y no admite duda.
 ### Limitaciones
 
 - **Una repetición.** Sin estimación de variabilidad.
-- **Veintitrés casos**, doce de ellos escritos por el autor del sistema. El sesgo
-  afecta al nivel absoluto; la comparación entre modelos, que usa los mismos casos,
-  es válida.
+- **Veintitrés casos**, todos escritos por el autor del sistema a partir de las
+  pautas del tutor sobre los campos obligatorios y el alcance. El sesgo afecta al
+  nivel absoluto; la comparación entre modelos, que usa los mismos casos, es válida.
 - **La temperatura no es un eje.** Estos modelos solo aceptan su valor por omisión.
 - **`terra` ejecutó 21 casos de 23**, uno excluido por el defecto anterior y otro
   no registrado.
@@ -949,9 +949,10 @@ de veinte entre `luna` y `sol`, sí es concluyente.
 
 - **Una repetición por condición.** La estabilidad se infiere de la coincidencia
   entre las tres tandas, no de repeticiones dentro de una.
-- **Veintitrés casos**, once propuestos por el tutor y doce por el autor del
-  sistema. La comparación entre modelos usa los mismos casos y es válida; el nivel
-  absoluto está afectado por el sesgo de autoría.
+- **Veintitrés casos**, todos escritos por el autor del sistema a partir de las
+  pautas del tutor sobre los campos obligatorios y el alcance. La comparación entre
+  modelos usa los mismos casos y es válida; el nivel absoluto está afectado por el
+  sesgo de autoría.
 - **La temperatura no es un eje.** Estos modelos solo aceptan su valor por
   omisión, de modo que la variabilidad observada entre tandas es irreducible.
 - **El coste de `sol` es promocional** hasta el 21 de noviembre de 2026.
@@ -1052,7 +1053,7 @@ prácticamente la misma tarifa. Los dos firman **23/23 sin un solo fallo de camp
 |---|---|---|
 | Acierto | 23/23 | 23/23 |
 | Coste por pasada | **0,2353 $** | 0,92 $ |
-| Coste por caso válido | **0,0102 $** | 0,0601 $ |
+| Coste por caso válido | **0,0102 $** | 0,0401 $ |
 | Latencia p50 | **9.011 ms** | 14.405 ms |
 | Tokens de entrada, especialista | 135.829 | 203.287 |
 
@@ -1070,7 +1071,7 @@ coste extremo a extremo en lugar de comparar tarifas.
 | Modelo | Proveedor | Acierto | Coste/caso válido |
 |---|---|---|---|
 | `gpt-5.6-terra` | OpenAI | **23/23** | 0,0102 $ |
-| `claude-sonnet-5` | Anthropic | **23/23** | 0,0601 $ |
+| `claude-sonnet-5` | Anthropic | **23/23** | 0,0401 $ |
 | `claude-opus-5` | Anthropic | **23/23** | 0,0904 $ |
 | `gpt-5.6-sol` | OpenAI | **23/23** | 0,0182 $ |
 | `gpt-5.6-luna` | OpenAI | 22/23 | **0,0013 $** |
@@ -1106,7 +1107,8 @@ medición de acierto sino a la de coste.
 ### Limitaciones
 
 - **Una repetición por modelo.**
-- **Veintitrés casos**, once propuestos por el tutor y doce por el autor.
+- **Veintitrés casos**, todos escritos por el autor a partir de las pautas del
+  tutor sobre los campos obligatorios y el alcance.
 - **La temperatura no es un eje**: el SDK de Anthropic no admite el parámetro.
 - **El criterio estricto sobre las vallas de Markdown** penaliza a `haiku` por una
   convención de formato y no por comprensión del producto. Declararlo al presentar
@@ -1114,16 +1116,11 @@ medición de acierto sino a la de coste.
 
 ---
 
-## Pendiente
+## Cierre experimental
 
-Relanzar las tres tandas con el defecto de `_check_schedules` corregido, para que
-`terra` complete los 23 casos. Después: repeticiones para medir variabilidad, y
-casos escritos por terceros para eliminar el sesgo de autoría.
+La evaluación quedó cerrada con 23 casos, seis modelos, 84 pruebas automatizadas y las tandas finales archivadas. No quedan tandas ni comparaciones de modelos pendientes para la memoria. Las ampliaciones de batería, las repeticiones adicionales y la validación con casos escritos por terceros se consideran trabajo futuro, no tareas necesarias para el cierre técnico.
+### Octavo defecto de instrumentación: clasificación de `haiku` sobrescrita
 
-1. Repeticiones (`--repetitions 5`) para estimar variabilidad y estabilidad.
-2. Verificar las tarifas antes de publicar cualquier cifra de coste.
-3. Comparar `gpt-4.1-mini` con `gpt-4.1`, con contraste de McNemar.
+En el batch `20260921T141839Z`, la suma almacenada de `product_correct` da 13/23 para `claude-haiku-4-5`. Sin embargo, las respuestas conservadas en `api_calls` muestran que el orquestador clasificó correctamente 19/23 casos. En seis peticiones respondió `IRS` de forma correcta y el fallo apareció después, cuando el especialista devolvió una salida mal formada.
 
-Mejora pendiente en la instrumentación, derivada de la incidencia 2 de la tanda 3:
-que `report.py` avise cuando el `prompt_hash` de una tanda no coincide con el del
-fichero de instrucciones presente en disco.
+La causa está en `evaluate.py`: al capturar un `AgentOutputError` posterior se pierde el resultado parcial y `product_type` se sustituye por `MALFORMED`. Así, el evaluador penaliza también una clasificación previa correcta. La clasificación real de `haiku` es 19/23; su estado de validación correcto permanece en 13/23.

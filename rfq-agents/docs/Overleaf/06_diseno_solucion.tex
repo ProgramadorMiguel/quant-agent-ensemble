@@ -1,298 +1,238 @@
 \chapter{Diseño de la solución}
+\label{cap:diseno}
+
+Este capítulo presenta las decisiones que definen la solución. El diseño busca separar las tareas que requieren interpretar lenguaje de aquellas que pueden resolverse mediante reglas exactas. Primero se describe la arquitectura general; después se justifican el contrato de datos, el esquema del \textit{IRS}, la red de agentes, la validación y la abstracción de proveedores. Los detalles de código se reservan para el capítulo 7.
 
 \section{Arquitectura general del sistema}
+\label{sec:arquitectura_general}
 
-Este capítulo presenta el diseño de la solución propuesta para transformar peticiones financieras expresadas en lenguaje natural en \textit{RFQ} estructuradas. La arquitectura combina modelos de lenguaje, utilizados para las tareas que requieren interpretación, con componentes deterministas encargados de comprobar las reglas financieras y generar la salida definitiva. Esta separación limita la influencia del comportamiento probabilístico de los modelos en las etapas que pueden resolverse mediante reglas explícitas y auditables.
+El sistema recibe una petición en lenguaje natural y produce uno de dos resultados: una \textit{RFQ} validada o un error que explica por qué no puede emitirse. Para cumplir este contrato, el flujo se divide en cinco etapas: ingesta, clasificación, extracción, validación y mapeo.
 
-El sistema recibe como entrada una petición redactada en lenguaje natural y devuelve uno de dos resultados: una \textit{RFQ} válida en formato \textit{Protocol Buffers} o un error que explica por qué no puede emitirse. El proceso no requiere revisión humana intermedia. Para cumplir este contrato, la arquitectura organiza el tratamiento de la petición en cinco etapas: ingesta, clasificación, extracción, validación y mapeo o serialización.
+La ingesta conserva la petición original y añade una fecha de referencia para resolver expresiones relativas. El orquestador clasifica el producto como \texttt{IRS} o \texttt{UNSUPPORTED}. Si está soportado, el especialista extrae los siete campos obligatorios, deriva las convenciones permitidas y calcula los calendarios. El validador comprueba después la completitud y coherencia. Solo una operación válida llega al mapeador determinista, que genera la \textit{RFQ} final.
 
-La primera etapa corresponde a la ingesta de la petición. El sistema conserva el texto original porque constituye la fuente a partir de la cual se interpretan los términos de la operación. Esta entrada puede contener fechas absolutas o relativas, abreviaturas, expresiones propias de una mesa de negociación y convenciones financieras indicadas de manera explícita.
+Cuando el validador detecta un error corregible de extracción, devuelve el diagnóstico al especialista. El bucle se limita a cinco pasadas. Si falta información que la petición nunca proporcionó, el proceso termina porque una nueva llamada no puede recuperarla. La clasificación queda fuera del bucle.
 
-En la segunda etapa, un agente orquestador clasifica la petición. Su responsabilidad se limita a decidir si el texto describe un \textit{IRS} admitido por el sistema o un producto fuera de alcance. No extrae términos financieros ni genera la \textit{RFQ}. Esta separación permite detener de forma temprana las peticiones no soportadas y evita que una operación perteneciente a otro producto avance hacia una estructura de \textit{IRS}.
+La arquitectura conserva un tercer agente para medir la fidelidad de serialización. Este agente se ejecuta después del mapeador, recibe los mismos términos validados y trata de reproducir su salida. Su respuesta no modifica la \textit{RFQ} emitida. Así se mide la capacidad del modelo sin convertirla en una dependencia operativa.
 
-Cuando la petición se clasifica como \textit{IRS}, un agente especialista ejecuta la tercera etapa. Este componente interpreta el texto, extrae los siete campos obligatorios, deriva las convenciones de mercado aplicables y calcula los calendarios de pago de las patas fija y flotante. También distingue el propósito de la petición: una cotización a tipo par, representada mediante \texttt{PAR\_RATE\_QUOTE}, o la valoración de una operación ya contratada, representada mediante \texttt{VALUATION}. En una cotización, el tipo fijo debe estar ausente; en una valoración, debe incluirse el tipo pactado.
+La configuración y la telemetría son transversales. Las instrucciones, el modelo y los recursos de cada agente se declaran fuera de la lógica financiera. Cada llamada registra proveedor, modelo, etapa, respuesta, consumo, latencia y coste. Esta separación permite comparar modelos sin cambiar el esquema ni las reglas.
 
-La cuarta etapa corresponde a la validación determinista. Un componente implementado en Python comprueba que la operación esté completa y que sus campos sean coherentes entre sí. Entre otras reglas, verifica las fechas, el nocional, la compatibilidad entre la divisa y el índice, las convenciones de mercado, los calendarios de pago y la relación entre el propósito de la \textit{RFQ} y la presencia del tipo fijo. Esta validación se ejecuta antes del mapeo y la serialización, por lo que una operación incorrecta no puede convertirse en la \textit{RFQ} emitida por el sistema.
-
-Cuando el validador detecta un error atribuible a la extracción, devuelve su diagnóstico al agente especialista. Este mecanismo cierra un bucle de autocorrección limitado a un máximo de cinco intentos. En cambio, si la petición carece de información que no puede recuperarse ni derivarse, el proceso termina con un error explícito. El bucle actúa sobre la extracción, no sobre la clasificación inicial realizada por el orquestador.
-
-Tras superar la validación, la quinta etapa realiza el mapeo y la serialización. Un componente determinista transforma los términos validados en el mensaje \textit{RFQ} definitivo. La curva de descuento se conserva en el nivel común del \textit{swap} porque se utiliza para descontar los flujos de ambas patas. La curva de estimación se sitúa dentro de la pata flotante, ya que se emplea únicamente para proyectar sus fijaciones. Los calendarios de pago permanecen separados para cada pata.
-
-La arquitectura incluye además un tercer agente de lenguaje dedicado a serializar los términos validados al mismo esquema \textit{Protocol Buffers}. Sin embargo, su salida no determina la \textit{RFQ} emitida por el sistema. Se ejecuta a continuación del mapeador determinista, únicamente con fines experimentales, y su resultado se compara con la salida de referencia que este ha producido. De este modo, el trabajo puede medir si un modelo de lenguaje es capaz de reproducir correctamente una estructura protobuf anidada sin introducir en el camino de emisión un componente redundante o un modo de fallo adicional.
-
-La configuración de los agentes se mantiene separada de la lógica principal. Las instrucciones, el modelo y el proveedor pueden modificarse sin alterar las reglas financieras, el esquema o el validador. Una capa común absorbe las diferencias entre las interfaces de los proveedores y devuelve al resto del sistema una respuesta homogénea junto con la información necesaria para registrar tokens, latencia y coste.
-
-La telemetría completa la arquitectura de forma transversal. Cada llamada a un modelo registra su etapa, proveedor, modelo, consumo de tokens, latencia, coste y resultado. Las ejecuciones se agrupan mediante un identificador de tanda y las bases de datos resultantes se archivan como evidencia reproducible. Esta instrumentación permite analizar por separado el comportamiento de cada etapa y reconstruir las condiciones de las mediciones.
-
-En conjunto, la arquitectura mantiene una frontera clara entre interpretación, comprobación y emisión. Los modelos de lenguaje interpretan la petición y producen los términos financieros; el validador determina si esos términos son admisibles; y el mapeador determinista genera la \textit{RFQ} definitiva. Esta separación permite aprovechar la flexibilidad de los modelos sin delegar en ellos la decisión final sobre la validez financiera ni la construcción de la salida utilizada por el sistema.
-
-La Figura~\ref{fig:arquitectura_general} representa el flujo principal, el bucle de autocorrección y la rama experimental del agente proto.
+La Figura~\ref{fig:arquitectura_general} resume el diseño.
 
 \begin{figure}[H]
     \centering
     \fbox{
         \begin{minipage}{0.86\textwidth}
             \centering
-            \textbf{Petición en lenguaje natural}\\[5pt]
-            $\downarrow$\\[5pt]
-            \textbf{Orquestador: clasificación}\\[3pt]
+            \textbf{Petición en lenguaje natural}\\[4pt]
+            $\downarrow$\\[4pt]
+            \textbf{Orquestador: clasificación}\\[2pt]
             \begin{tabular}{P{5.2cm} P{5.2cm}}
                 $\swarrow$ \texttt{UNSUPPORTED} & \texttt{IRS} $\searrow$ \\
-                Error: producto no soportado & Agente especialista
-            \end{tabular}\\[5pt]
-            $\downarrow$\\[5pt]
-            \textbf{Extracción, derivación y calendarios}\\[5pt]
-            $\downarrow$\\[5pt]
+                Error: producto no soportado & Especialista de producto
+            \end{tabular}\\[4pt]
+            $\downarrow$\\[4pt]
+            \textbf{Extracción, convenciones y calendarios}\\[4pt]
+            $\downarrow$\\[4pt]
             \textbf{Validación determinista}\\
-            {\small Si el error de extracción es corregible, el diagnóstico vuelve al especialista (máximo cinco intentos)}\\[5pt]
-            $\downarrow$\\[5pt]
-            \textbf{Mapeador determinista}\\[5pt]
-            $\downarrow$\\[5pt]
-            \textbf{RFQ emitida}\\
-            {\small Salida operativa y referencia experimental}\\[5pt]
-            $\downarrow$\\[5pt]
-            \textbf{Agente proto}\\[5pt]
-            $\downarrow$\\[5pt]
-            \textbf{Métrica de fidelidad de serialización}\\[6pt]
-            \rule{0.76\textwidth}{0.4pt}\\[4pt]
-            {\small \textbf{Telemetría transversal:} etapa, proveedor, modelo, tokens, latencia, coste y resultado}
+            {\small Error corregible: diagnóstico al especialista; máximo cinco pasadas}\\[4pt]
+            $\downarrow$\\[4pt]
+            \textbf{Mapeador determinista} $\rightarrow$ \textbf{RFQ emitida}\\[4pt]
+            $\downarrow$\\[4pt]
+            \textbf{Agente proto experimental} $\rightarrow$ \textbf{Métrica de fidelidad}\\[5pt]
+            \rule{0.76\textwidth}{0.4pt}\\[3pt]
+            {\small Telemetría: configuración, respuestas, tokens, latencia, coste y resultado}
         \end{minipage}
     }
-    \caption[Arquitectura general del sistema]{Arquitectura general del sistema y posición experimental del agente proto}
+    \caption[Arquitectura general del sistema]{Arquitectura general y posición experimental del agente proto}
     \label{fig:arquitectura_general}
     \floatfoot{Fuente: elaboración propia.}
 \end{figure}
 
+El criterio de diseño es sencillo: los modelos interpretan lenguaje; el código decide si los términos son admisibles y construye la salida. Esta frontera reduce el efecto probabilístico donde existen reglas deterministas y facilita atribuir cada fallo a una etapa.
 
 \section{Justificación del uso de Protocol Buffers}
+\label{sec:justificacion_protobuf}
 
-La salida del sistema requiere una representación que transforme los términos interpretados desde lenguaje natural en una estructura inequívoca y procesable. Para cumplir esta función se eligió \textit{Protocol Buffers} como lenguaje de definición del esquema y como formato de representación de la \textit{RFQ}. Esta elección no pretende presentar \textit{Protocol Buffers} como un estándar sectorial para derivados financieros, sino utilizar sus propiedades técnicas para definir un contrato de datos estricto entre los componentes del sistema.
+La salida necesita un contrato que defina campos, tipos y relaciones entre las patas. Se consideraron JSON, FpML y \textit{Protocol Buffers}. JSON ofrece legibilidad y soporte amplio, pero necesita un esquema adicional para imponer la estructura. FpML proporciona una representación sectorial extensa, aunque su cobertura multiproducto supera las necesidades del prototipo \citep{fpml-home}. Protobuf permite definir mensajes tipados y generar clases para diferentes lenguajes desde un único archivo \citep{protobuf-overview}.
 
-Una alternativa inicial habría sido representar la operación mediante JSON. Este formato ofrece una sintaxis legible, un amplio soporte en herramientas de desarrollo y una integración sencilla con modelos de lenguaje. Sin embargo, un documento JSON no impone por sí solo los campos admitidos, sus tipos ni las relaciones estructurales entre ellos. Estas restricciones pueden añadirse mediante un esquema complementario, pero esto obliga a mantener y aplicar por separado la definición y la validación del formato.
+\begin{table}[H]
+\centering
+\small
+\caption{Alternativas consideradas para el contrato de datos}
+\label{tab:alternativas_contrato_datos}
+\begin{tabular}{|P{2.7cm}|P{4.5cm}|P{5.6cm}|}
+\hline
+\textbf{Alternativa} & \textbf{Ventaja} & \textbf{Decisión} \\
+\hline
+JSON con esquema & Legible y ampliamente soportado. & Descartado porque obliga a mantener el formato y su contrato por separado. \\
+\hline
+FpML & Estándar específico y amplio para derivados. & Descartado por introducir estructuras fuera del alcance de un único producto. \\
+\hline
+Protocol Buffers & Tipos, enumeraciones, anidamiento y generación de código. & Elegido como contrato técnico reducido y compartido por los componentes. \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia a partir de \textcite{fpml-home} y \textcite{protobuf-overview}.}
+\end{table}
 
-XML proporciona capacidades similares y constituye la base de FpML, un estándar específicamente diseñado para representar e intercambiar productos derivados. FpML ofrece una cobertura financiera mucho más amplia que la necesaria en este trabajo y facilita la interoperabilidad entre entidades. Sin embargo, esa amplitud también introduce una complejidad considerable para un sistema limitado inicialmente a \textit{IRS vanilla}. Adoptarlo habría requerido manejar numerosas estructuras y convenciones que no forman parte del problema evaluado \citep{fpml-home}.
+La elección prioriza adecuación al alcance, no superioridad general. Protobuf representa de forma explícita los términos comunes y las dos patas, conserva la presencia de campos opcionales y permite analizar las respuestas de los agentes. El formato de texto facilita la inspección durante el experimento; una integración posterior podría utilizar la representación binaria sin cambiar el esquema.
 
-\textit{Protocol Buffers} permite definir mensajes, campos, tipos escalares, estructuras anidadas, enumeraciones y cardinalidades en un único archivo \texttt{.proto}. A partir de esta definición se generan clases para diferentes lenguajes de programación, lo que reduce el riesgo de que cada componente interprete la \textit{RFQ} de manera distinta. La documentación oficial destaca precisamente su uso como mecanismo extensible y neutral respecto al lenguaje para serializar datos estructurados \citep{protobuf-overview}.
-
-Una \textit{RFQ} contiene importes, indicadores booleanos, enumeraciones y listas de pagos que no deben tratarse como cadenas intercambiables. El esquema tipa el nocional, el tipo fijo y el diferencial como valores numéricos; la dirección de la operación como un valor booleano; y define enumeraciones cerradas para el propósito de la petición y la naturaleza del tipo flotante. Las fechas se representan como cadenas en formato ISO. Por tanto, el esquema no garantiza que contengan fechas válidas ni que mantengan un orden temporal coherente. Estas comprobaciones corresponden a la capa de validación determinista.
-
-La estructura anidada también permite reflejar la organización financiera del \textit{IRS}. Los términos compartidos por la operación se sitúan en el nivel común del \textit{swap}; la pata fija y la pata flotante se representan mediante mensajes diferenciados; y cada una conserva sus propias convenciones y fechas de pago. La curva de descuento permanece en el nivel común porque afecta a los flujos de ambas patas, mientras que la curva de estimación forma parte de la pata flotante porque se utiliza para proyectar sus fijaciones. Esta organización sigue la separación económica de los flujos descrita por \textcite{ausin2025quantitative}.
-
-Otro motivo para utilizar \textit{Protocol Buffers} es la separación entre la definición del contrato y las instancias concretas. El archivo \texttt{.proto} especifica qué forma puede adoptar una \textit{RFQ}, mientras que cada ejecución produce un mensaje que contiene los valores de una operación particular. El agente especialista y el agente proto reciben el esquema como parte de sus instrucciones, pero no pueden modificarlo. El orquestador no lo necesita porque su responsabilidad se limita a clasificar el producto. Esta separación se desarrolla específicamente en el apartado siguiente.
-
-Aunque \textit{Protocol Buffers} admite serialización binaria, el sistema utiliza su representación textual para las salidas inspeccionables y para la evaluación. El formato textual conserva la correspondencia con el esquema, puede analizarse mediante las clases generadas y facilita la revisión de los campos durante los experimentos. La \textit{RFQ} emitida no se considera válida por su apariencia textual, sino porque puede interpretarse como una instancia del mensaje definido en el esquema.
-
-La generación de clases desde una única definición facilita además una posible integración posterior con componentes escritos en otros lenguajes. \textit{Protocol Buffers} permite generar clases para Python y C++ a partir del mismo archivo \texttt{.proto}, lo que evitaría mantener manualmente dos modelos de datos distintos. La implementación actual solo genera y utiliza las clases de Python. La generación de clases para C++ formaría parte de la integración futura con un motor de valoración, que no se incluye en la implementación evaluada.
-
-La elección también presenta limitaciones. \textit{Protocol Buffers} define la estructura y los tipos de los mensajes, pero no expresa por sí solo todas las reglas financieras. Puede comprobar que un campo contiene un número o que una enumeración utiliza un valor admitido, pero no que la fecha de inicio sea anterior al vencimiento, que el índice sea compatible con la divisa o que el tipo fijo esté presente únicamente en una valoración. Estas restricciones requieren una capa adicional de validación determinista.
-
-En consecuencia, \textit{Protocol Buffers} proporciona el contrato estructural de la \textit{RFQ}, pero no sustituye la validación semántica y financiera. Su función consiste en ofrecer una representación tipada, anidada y compartida por los componentes, mientras que el validador comprueba que cada instancia sea completa y coherente. La combinación de ambas capas permite distinguir entre una salida que respeta formalmente el esquema y una operación que además resulta válida desde el punto de vista financiero.
-
+El contrato estructural no sustituye la validación financiera. Puede exigir que el nocional sea numérico, pero no que sea positivo; puede almacenar fechas, pero no comprobar su orden; y no sabe si un índice es compatible con la divisa. Por ello, protobuf define la forma admisible y el validador determina si una instancia concreta es coherente.
 
 \section{Separación entre esquema e instancia}
+\label{sec:esquema_instancia}
 
-El diseño distingue entre el esquema que define la estructura admitida y las instancias que representan operaciones concretas. Esta separación evita confundir el modelo general de una \textit{RFQ} con los valores particulares extraídos de cada petición. El esquema constituye un contrato estable compartido por los componentes, mientras que las instancias cambian en cada ejecución.
+El diseño distingue tres niveles. El esquema responde qué forma puede adoptar una \textit{RFQ}; la instancia contiene los valores de una petición; y la validación determina si esos valores representan una operación admisible.
 
-El esquema se declara en el archivo \texttt{pricing.proto}. En él se definen los mensajes, los campos, las enumeraciones y las relaciones de anidamiento que puede contener una \textit{RFQ}. La raíz es el mensaje \texttt{RFQ}, que contiene un identificador y una instancia de \texttt{InterestRateSwap}. Esta última agrupa los términos comunes del \textit{swap} y los mensajes correspondientes a la pata fija y la pata flotante.
+\texttt{pricing.proto} es el contrato estable. Define el mensaje raíz, el \textit{IRS}, sus patas, tipos y enumeraciones. No contiene convenciones específicas de EUR o USD ni datos de una operación. Estas reglas permanecen fuera del esquema porque pueden evolucionar sin alterar la estructura básica.
 
-Los campos comunes incluyen el propósito de la petición, el nocional, la divisa, la dirección de la operación y las fechas de valoración, inicio y vencimiento. La curva de descuento también se sitúa en este nivel porque se aplica a los flujos de ambas patas. La pata fija contiene el tipo cuando corresponde, su convención de recuento de días, su frecuencia y sus fechas de pago. La pata flotante contiene la naturaleza del tipo, el índice, el tenor cuando resulta aplicable, el diferencial, su convención, su frecuencia, sus fechas de pago y la curva de estimación.
+Una instancia de cotización utiliza \texttt{PAR\_RATE\_QUOTE} y omite el tipo fijo. Una valoración utiliza \texttt{VALUATION} e incorpora el tipo pactado. Ambas comparten el mismo esquema; el validador comprueba que propósito y presencia del tipo sean coherentes.
 
-El esquema utiliza dos enumeraciones para restringir conceptos que no deben representarse mediante texto libre. \texttt{RFQPurpose} distingue una cotización a tipo par de la valoración de una operación existente. \texttt{FloatingRateType} diferencia una pata basada en un índice IBOR de otra que capitaliza un tipo a un día. Esta segunda distinción permite representar correctamente los \textit{IRS} en USD contra SOFR compuesto, donde no existe un tenor de fijación.
-
-Una instancia es el mensaje concreto producido para una petición. Por ejemplo, una solicitud de cotización de un \textit{IRS} en EUR a cinco años genera una instancia con \texttt{purpose} igual a \texttt{PAR\_RATE\_QUOTE}, el nocional, la divisa, las fechas y la dirección indicadas, pero sin tipo fijo. A partir del vencimiento y la divisa, el especialista deriva las convenciones y calcula los calendarios correspondientes. El resultado debe ajustarse al esquema sin modificarlo.
-
-En una valoración, la misma estructura utiliza \texttt{purpose} igual a \texttt{VALUATION} e incorpora el tipo fijo al que se contrató la operación. La diferencia entre ambas instancias no requiere crear dos esquemas distintos. Se expresa mediante la enumeración de propósito y una regla de coherencia aplicada por el validador: una cotización con tipo fijo y una valoración sin tipo fijo son combinaciones inválidas.
-
-El archivo \texttt{.proto} no incluye valores específicos de una operación ni reglas dependientes de una divisa concreta. Por ejemplo, establece que la pata flotante puede contener un índice y una curva de estimación, pero no determina dentro del propio esquema que un \textit{IRS} en EUR utilice EURIBOR o que uno en USD utilice SOFR compuesto. Estas relaciones pertenecen a las convenciones de mercado y a la validación determinista. Así se evita mezclar el contrato estructural con reglas financieras que pueden evolucionar.
-
-La separación también afecta a las instrucciones de los modelos. El agente especialista recibe el esquema para conocer la estructura que debe producir, junto con las reglas necesarias para interpretar y derivar los términos. El agente proto recibe los términos ya validados y el mismo esquema para intentar reproducir la \textit{RFQ} generada por el mapeador. En ambos casos, el esquema actúa como una restricción externa y versionada, no como contenido que el modelo pueda redefinir.
-
-Cada instancia se analiza mediante las clases de Python generadas a partir del archivo \texttt{.proto}. Si la salida no puede interpretarse conforme al esquema, se considera fuera del contrato. Superar este análisis solo acredita que la instancia tiene una estructura reconocible. La validación posterior debe comprobar las fechas, las convenciones, los campos obligatorios y las relaciones financieras.
-
-Esta separación facilita la evolución del sistema. Un cambio en los valores de una operación no afecta al esquema. Cuando es necesario modificar el contrato, por ejemplo para introducir el propósito de la \textit{RFQ} o distinguir la naturaleza del tipo flotante, el cambio queda localizado en una nueva versión del archivo \texttt{.proto} y en los componentes que dependen de ella. Las instancias y los casos de referencia deben actualizarse de forma controlada para evitar comparar resultados producidos bajo versiones incompatibles.
-
-En conjunto, el esquema responde a la pregunta «¿qué forma puede tener una \textit{RFQ}?», mientras que cada instancia responde a «¿qué operación concreta se ha solicitado?». La validación añade una tercera pregunta: «¿esta instancia concreta es completa y financieramente coherente?». Mantener separadas estas tres responsabilidades reduce la ambigüedad y facilita la trazabilidad de los cambios.
-
-La Figura~\ref{fig:esquema_instancia_validacion} resume la relación entre el contrato estructural, una operación concreta y las reglas semánticas y financieras.
+La Figura~\ref{fig:esquema_instancia_validacion} muestra esta separación.
 
 \begin{figure}[H]
     \centering
     \fbox{
-        \begin{minipage}{0.80\textwidth}
+        \begin{minipage}{0.84\textwidth}
             \centering
-            \textbf{\texttt{pricing.proto}}\\
-            {\small Definición estable: mensajes, campos, tipos y enumeraciones}\\[5pt]
-            $\downarrow$\\
-            {\small genera las clases y restringe la estructura}\\[5pt]
-            \textbf{Instancia \texttt{RFQ.textproto}}\\
-            {\small Valores variables de una petición concreta}\\[5pt]
-            $\downarrow$\\
-            {\small se analiza conforme al esquema}\\[5pt]
+            \textbf{Esquema: \texttt{pricing.proto}}\\
+            {\small Mensajes, campos, tipos y enumeraciones}\\[5pt]
+            $\downarrow$\\[5pt]
+            \textbf{Instancia: \texttt{RFQ.textproto}}\\
+            {\small Valores extraídos para una petición concreta}\\[5pt]
+            $\downarrow$\\[5pt]
             \textbf{Validación determinista}\\
-            {\small Reglas de completitud, coherencia temporal y compatibilidad financiera}
+            {\small Completitud, coherencia temporal y compatibilidad financiera}
         \end{minipage}
     }
-    \caption[Separación entre esquema, instancia y validación]{Separación entre el esquema estructural, la instancia de una RFQ y su validación semántica}
+    \caption[Separación entre esquema, instancia y validación]{Responsabilidades del contrato estructural, la operación concreta y las reglas financieras}
     \label{fig:esquema_instancia_validacion}
     \floatfoot{Fuente: elaboración propia.}
 \end{figure}
 
+Esta separación permite versionar el contrato, comparar instancias campo a campo y modificar convenciones sin redefinir el producto. También impide considerar válida una salida solo porque pueda analizarse como protobuf.
 
 \section{Diseño del esquema de RFQ para IRS}
+\label{sec:diseno_esquema_irs}
 
-El esquema implementado representa una petición de cotización o valoración de un \textit{IRS vanilla}. Aunque durante el diseño se consideró la posibilidad de admitir distintos productos financieros mediante una estructura multiproducto, la implementación evaluada se limitó a un único producto. Esta decisión mantiene la correspondencia entre el alcance declarado, los casos de prueba y el contrato definido en el archivo \texttt{pricing.proto}.
+El esquema sigue la estructura de dos patas descrita en la Definición 2.19 de \textcite[p.~59]{ausin2025quantitative}. El mensaje raíz \texttt{RFQ} contiene un identificador y una instancia de \texttt{InterestRateSwap}. No se incluyó una estructura multiproducto porque la implementación evaluada solo trata \textit{IRS}; añadirla sin un segundo producto habría aumentado la complejidad sin aportar una capacidad medible.
 
-El mensaje raíz es \texttt{RFQ}. Su función consiste en identificar la petición y contener la operación financiera estructurada. En la versión implementada incluye un campo \texttt{rfq\_id} y un mensaje \texttt{InterestRateSwap}. No se utiliza una estructura \texttt{oneof}, ya que no existen varios productos entre los que deba imponerse exclusividad. Incorporar esa abstracción sin un segundo producto habría añadido complejidad sin aportar una capacidad utilizada o evaluada.
+\texttt{InterestRateSwap} agrupa el propósito, nocional, divisa, dirección, fechas principales y curva de descuento. También contiene \texttt{FixedLeg} y \texttt{FloatingLeg}. La curva de descuento permanece en el nivel común porque descuenta los flujos de ambas patas; la curva de estimación se sitúa dentro de la pata flotante porque solo proyecta sus fijaciones. Esta organización aplica el marco de doble curva descrito en la sección 2.4.6.2 de la misma referencia \citep[sec.~2.4.6.2]{ausin2025quantitative}.
 
-El mensaje \texttt{InterestRateSwap} agrupa los atributos comunes de la operación. Incluye el propósito de la petición, el nocional, la divisa, la dirección, las fechas principales y la curva de descuento. También contiene dos mensajes diferenciados, \texttt{FixedLeg} y \texttt{FloatingLeg}, que representan respectivamente la pata fija y la pata flotante. Esta organización sigue la estructura financiera de un \textit{swap} como intercambio de dos conjuntos de flujos \citep{ausin2025quantitative}.
+La pata fija incluye el tipo cuando corresponde, la base, la frecuencia y las fechas de pago. La pata flotante incluye la naturaleza del tipo, índice, tenor cuando aplica, diferencial, base, frecuencia, curva de estimación y calendario. \texttt{FloatingRateType} distingue \texttt{IBOR} de \texttt{OVERNIGHT\_COMPOUNDED}; el segundo no utiliza tenor.
 
-El campo \texttt{purpose} utiliza la enumeración \texttt{RFQPurpose}. Sus valores son \texttt{RFQ\_PURPOSE\_UNSPECIFIED}, que proto3 exige como primer elemento y que el validador trata como propósito ausente; \texttt{PAR\_RATE\_QUOTE}, que representa una petición de cotización a tipo par; y \texttt{VALUATION}, que representa la valoración de una operación existente. En una cotización, \texttt{fixed\_leg.rate} debe estar ausente porque el tipo fijo constituye la incógnita que resolverá posteriormente el motor de valoración. En una valoración, el campo debe contener el tipo pactado. La enumeración expresa el uso de la petición, mientras que el validador comprueba la presencia del propósito y su coherencia con el tipo fijo.
+Los siete campos obligatorios son propósito, fechas de valoración, inicio y vencimiento, divisa, nocional y dirección. El tipo fijo no es obligatorio de forma general: debe faltar en una cotización y aparecer en una valoración. Los campos escalares se declaran como opcionales para distinguir ausencia y valor predeterminado.
 
-El nocional se representa mediante un valor numérico de doble precisión y la dirección mediante el indicador booleano \texttt{is\_fixed\_rate\_receiver}. Este último adopta la perspectiva del solicitante y señala si recibe el tipo fijo. La divisa y las fechas se conservan como cadenas. Las fechas siguen el formato ISO, pero el esquema no comprueba por sí mismo si son válidas ni si mantienen un orden temporal correcto.
+Los calendarios se almacenan en dos vectores independientes. Esta decisión permite frecuencias distintas y periodos rotos. Cada elemento representa el final de un periodo y el último debe coincidir con el vencimiento. El esquema no incluye fechas de fijación ni calendarios de festivos, simplificaciones coherentes con el modelo de referencia utilizado en el trabajo \citep[p.~63]{ausin2025quantitative}.
 
-La curva de descuento se sitúa en el nivel común de \texttt{InterestRateSwap}. Esta ubicación refleja que se utiliza para descontar los flujos de las dos patas y evita asociarla incorrectamente a una sola de ellas. La curva de estimación, en cambio, se encuentra dentro de \texttt{FloatingLeg}, porque su función consiste exclusivamente en proyectar las fijaciones de la pata flotante. Esta separación responde al marco de doble curva utilizado como referencia financiera \citep{ausin2025quantitative}.
-
-El mensaje \texttt{FixedLeg} contiene el tipo fijo, la convención de recuento de días, la frecuencia y el vector de fechas de pago. El tipo se expresa en tanto por uno y se aplica de forma uniforme durante toda la vida de la operación. Por tanto, el esquema no contempla tipos escalonados. El vector \texttt{payment\_dates} permite representar explícitamente el calendario de la pata y admite periodos no regulares que no pueden deducirse únicamente de las fechas inicial y final y de una frecuencia general.
-
-El mensaje \texttt{FloatingLeg} incorpora la naturaleza del tipo flotante, el índice, el tenor cuando corresponde, el diferencial, la convención de recuento de días, la frecuencia, la curva de estimación y su propio calendario. La enumeración \texttt{FloatingRateType} distingue entre \texttt{IBOR} y \texttt{OVERNIGHT\_COMPOUNDED}. Esta distinción resulta necesaria porque un índice IBOR tiene un plazo de fijación, mientras que un tipo a un día compuesto acumula fijaciones diarias y no utiliza tenor.
-
-Esta diferencia permite representar las convenciones de EUR y USD sin forzar ambos mercados dentro de una misma estructura financiera. Los \textit{swaps} en EUR emplean EURIBOR con tenor de tres meses para vencimientos de un año y de seis meses para vencimientos superiores. En USD, el \textit{IRS vanilla} moderno es un OIS contra SOFR compuesto y el campo \texttt{tenor} queda ausente. La transición desde LIBOR modificó así la naturaleza de la pata flotante, no únicamente el nombre de su índice \citep{opengamma2024conventions,opengamma2026strata,arrc2023closing}.
-
-Los calendarios se representan mediante dos vectores independientes de cadenas: uno en la pata fija y otro en la flotante. Esta decisión permite que ambas patas tengan frecuencias diferentes y conserva de forma explícita los periodos irregulares. El agente especialista calcula las fechas y el validador comprueba su coherencia antes de que el mapeador genere la \textit{RFQ} definitiva.
-
-El esquema adopta campos opcionales para distinguir un valor ausente de un valor presente con el valor por defecto del tipo escalar. Esta distinción es relevante para los siete campos obligatorios y para el tipo fijo condicionado por el propósito. No obstante, la declaración de un campo como opcional en \textit{Protocol Buffers} no determina si su ausencia es financieramente admisible. Esa decisión corresponde al validador.
-
-Los nombres de varios campos, como \texttt{notional}, \texttt{rate}, \texttt{is\_fixed\_rate\_receiver}, \texttt{discount\_curve} y \texttt{forecast\_curve}, reproducen los conceptos empleados por la clase de valoración tomada como referencia. Esta correspondencia reduce la traducción conceptual necesaria para una futura integración con un motor financiero \citep{ausin2025quantitative}.
-
-La extensión futura a múltiples productos requeriría modificar el mensaje raíz. Una posible evolución consistiría en sustituir el campo fijo \texttt{irs} por un bloque \texttt{oneof} que agrupase mensajes alternativos, como un \textit{IRS} o un \textit{FRA}. De este modo, el esquema garantizaría que cada \textit{RFQ} contiene un único producto. Esta posibilidad forma parte del diseño evolutivo, pero no de la implementación ni de la evaluación presentadas en este trabajo.
-
-En conjunto, el esquema implementado prioriza una representación rigurosa del único producto evaluado frente a una generalización no utilizada. La separación entre términos comunes, pata fija y pata flotante permite representar las diferencias financieras relevantes, mientras que las enumeraciones restringen conceptos cerrados y la validación determinista completa las reglas que \textit{Protocol Buffers} no puede expresar.
-
-La Figura~\ref{fig:jerarquia_esquema_irs} resume la jerarquía del esquema y la ubicación de sus campos principales.
+La Figura~\ref{fig:jerarquia_esquema_irs} resume la jerarquía.
 
 \begin{figure}[H]
     \centering
     \fbox{
-        \begin{minipage}{0.86\textwidth}
-            \small
+        \begin{minipage}{0.9\textwidth}
+            \centering
             \textbf{RFQ}\\
-            \hspace*{0.5cm}$\boldsymbol{\mid}$-- \texttt{rfq\_id}\\
-            \hspace*{0.5cm}$\boldsymbol{\mid}$-- \textbf{InterestRateSwap}\\
-            \hspace*{1.2cm}$\boldsymbol{\mid}$-- \texttt{purpose}\\
-            \hspace*{1.2cm}$\boldsymbol{\mid}$-- \texttt{notional}, \texttt{currency}, dirección y fechas\\
-            \hspace*{1.2cm}$\boldsymbol{\mid}$-- \texttt{discount\_curve} \textit{(común a ambas patas)}\\
-            \hspace*{1.2cm}$\boldsymbol{\mid}$-- \textbf{FixedLeg}\\
-            \hspace*{2.0cm}$\boldsymbol{\mid}$-- \texttt{rate}\\
-            \hspace*{2.0cm}$\boldsymbol{\mid}$-- \texttt{day\_count} y \texttt{payment\_frequency}\\
-            \hspace*{2.0cm}$\boldsymbol{\mid}$-- \texttt{payment\_dates}\\
-            \hspace*{1.2cm}$\boldsymbol{\mid}$-- \textbf{FloatingLeg}\\
-            \hspace*{2.0cm}$\boldsymbol{\mid}$-- \texttt{rate\_type}, \texttt{index} y \texttt{tenor}\\
-            \hspace*{2.0cm}$\boldsymbol{\mid}$-- \texttt{spread}\\
-            \hspace*{2.0cm}$\boldsymbol{\mid}$-- \texttt{day\_count} y \texttt{payment\_frequency}\\
-            \hspace*{2.0cm}$\boldsymbol{\mid}$-- \texttt{forecast\_curve} \textit{(solo pata flotante)}\\
-            \hspace*{2.0cm}$\boldsymbol{\mid}$-- \texttt{payment\_dates}
+            {\small \texttt{rfq\_id}}\\[4pt]
+            $\downarrow$\\[4pt]
+            \textbf{InterestRateSwap}\\
+            {\small propósito, nocional, divisa, dirección, fechas, curva de descuento}\\[5pt]
+            \begin{tabular}{P{6.1cm} P{6.1cm}}
+                $\swarrow$ \textbf{FixedLeg} & \textbf{FloatingLeg} $\searrow$ \\
+                tipo fijo opcional & naturaleza del tipo e índice \\
+                base y frecuencia & tenor opcional y diferencial \\
+                fechas de pago & base, frecuencia y curva de estimación \\
+                & fechas de pago
+            \end{tabular}
         \end{minipage}
     }
-    \caption[Jerarquía del esquema de IRS]{Jerarquía del esquema de RFQ para IRS y ubicación de los campos principales}
+    \caption[Jerarquía del esquema de IRS]{Jerarquía y ubicación de los campos principales del esquema}
     \label{fig:jerarquia_esquema_irs}
     \floatfoot{Fuente: elaboración propia.}
 \end{figure}
 
+El esquema prioriza una representación rigurosa del producto evaluado frente a una generalización no utilizada. Una futura ampliación deberá añadir cada producto con su propia estructura y reglas, sin forzar sus términos dentro del mensaje de \textit{IRS}.
 
 \section{Diseño de la red de agentes}
+\label{sec:diseno_red_agentes}
 
-La solución distribuye las tareas basadas en modelos de lenguaje entre tres agentes con responsabilidades diferenciadas: el orquestador, el especialista de producto y el agente proto. Esta separación busca limitar el contexto y el objetivo de cada llamada, de modo que cada agente produzca una salida concreta que pueda comprobarse antes de continuar. La red se complementa con un validador y un mapeador deterministas, que no son agentes de lenguaje.
+La red asigna una responsabilidad a cada componente. El orquestador clasifica; el especialista interpreta y estructura; el validador comprueba; el mapeador emite; y el agente proto mide la serialización. La Tabla~\ref{tab:responsabilidades_componentes} resume sus fronteras.
 
-La configuración de la red se declara fuera del código principal. Cada agente dispone de instrucciones propias y, cuando lo necesita, recibe documentación adicional sobre el producto o el esquema de salida. Esta organización permite modificar las instrucciones o el modelo asignado sin alterar la lógica que coordina el flujo. Además, los cambios quedan registrados mediante control de versiones, lo que permite asociar cada tanda experimental con la configuración que la produjo.
+\begin{table}[H]
+\centering
+\small
+\caption{Responsabilidades de los componentes del flujo}
+\label{tab:responsabilidades_componentes}
+\begin{tabular}{|P{3.0cm}|P{4.8cm}|P{5.0cm}|}
+\hline
+\textbf{Componente} & \textbf{Responsabilidad} & \textbf{No realiza} \\
+\hline
+Orquestador & Clasificar como \texttt{IRS} o \texttt{UNSUPPORTED}. & Extraer términos, validar o valorar. \\
+\hline
+Especialista & Extraer campos, derivar convenciones y calcular calendarios. & Decidir por sí solo la validez final. \\
+\hline
+Validador & Comprobar completitud y coherencia; decidir si procede reintentar. & Interpretar lenguaje libre o emitir la RFQ. \\
+\hline
+Mapeador & Construir la \textit{RFQ} desde términos validados. & Inferir o corregir términos financieros. \\
+\hline
+Agente proto & Reproducir experimentalmente la serialización. & Determinar la salida operativa. \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia.}
+\end{table}
 
-El orquestador constituye la puerta de entrada de la red. Recibe la petición original y devuelve una etiqueta cerrada: \texttt{IRS} cuando identifica un producto incluido en el alcance o \texttt{UNSUPPORTED} cuando se trata de otro producto. Su responsabilidad termina en esa clasificación. No extrae términos financieros, no aplica convenciones, no valida la operación y no genera la \textit{RFQ}.
+El orquestador recibe solo las reglas necesarias para delimitar el producto. El especialista añade conocimiento financiero y el esquema. Esta distribución evita cargar al clasificador con detalles que no necesita y permite cambiar las instrucciones de una etapa sin modificar las demás.
 
-La salida reducida del orquestador facilita su comprobación y evita que una petición no soportada avance hacia los componentes diseñados específicamente para \textit{IRS}. Sin embargo, esta posición inicial también introduce una limitación: si el orquestador clasifica incorrectamente una petición, el error se produce antes del bucle de autocorrección. Por tanto, una clasificación errónea no puede corregirse mediante los reintentos posteriores, que solo actúan sobre la extracción.
+El bucle se sitúa entre extracción y validación. Esta posición permite devolver un diagnóstico específico sobre campos o convenciones, pero deja fuera la clasificación inicial. El límite de cinco pasadas acota coste y latencia. Una ausencia de información no se considera corregible; un error en términos existentes sí puede dar lugar a otro intento.
 
-Cuando la petición se clasifica como \textit{IRS}, se activa el agente especialista de producto. Este agente recibe el texto original, las instrucciones financieras aplicables y el esquema que debe respetar. Su responsabilidad consiste en interpretar la petición y producir una representación estructurada de los términos del \textit{swap}. Para ello, extrae los siete campos obligatorios, determina el propósito de la \textit{RFQ}, deriva las convenciones de mercado que no se han indicado expresamente y calcula los calendarios de pago.
-
-El especialista debe distinguir entre una cotización a tipo par y la valoración de una operación existente. En una \texttt{PAR\_RATE\_QUOTE}, el tipo fijo no debe aparecer porque constituye la incógnita solicitada. En una \texttt{VALUATION}, el especialista debe extraer el tipo pactado. Esta distinción no se deduce únicamente de la presencia del tipo, sino también de la intención expresada en la petición, y posteriormente se comprueba mediante una regla determinista.
-
-El agente también debe aplicar las convenciones correspondientes a la divisa y al vencimiento. Para EUR, la convención distingue entre \textit{swaps} con vencimiento de un año y aquellos con vencimiento superior. Para USD, debe reconocer la estructura moderna de un OIS contra SOFR compuesto y omitir el tenor, ya que este concepto no se aplica a un tipo a un día capitalizado. Cuando la petición expresa una convención no estándar, el especialista debe respetarla siempre que no contradiga la naturaleza del producto.
-
-Los calendarios de pago forman parte de la salida del especialista. No se generan posteriormente mediante una regla mecánica porque el alcance incluye periodos irregulares cuya secuencia no puede deducirse únicamente de las fechas inicial y final y de una frecuencia general. Cada pata conserva su propio vector de fechas, lo que permite representar frecuencias diferentes para los pagos fijos y flotantes.
-
-La salida del especialista se somete a una validación determinista antes de construir la \textit{RFQ}. El validador comprueba la presencia de los campos obligatorios, la coherencia entre el propósito y el tipo fijo, el orden de las fechas, el signo del nocional, la compatibilidad entre divisa e índice, las convenciones y los calendarios. La combinación de un agente interpretativo con una comprobación determinista evita utilizar otra llamada al modelo para decidir si la salida del propio modelo es correcta.
-
-La validación distingue entre información ausente y errores de extracción. Si la petición no contiene uno de los siete campos obligatorios y este no puede derivarse, una nueva llamada no puede recuperar información inexistente. En ese caso, el flujo termina con un error explícito. Cuando la información sí existe o puede derivarse, pero el especialista la ha representado de forma incorrecta, el diagnóstico del validador permite realizar una nueva extracción.
-
-Este mecanismo forma un bucle de autocorrección limitado a cinco intentos. El límite evita una repetición indefinida y permite acotar el coste y la latencia máximos de una petición. El bucle funciona como una red de seguridad frente a errores de extracción y especificaciones imperfectas, pero no garantiza la corrección de cualquier fallo. En particular, no puede recuperar los errores de clasificación producidos por el orquestador antes de que comience la extracción.
-
-Una vez que la operación supera la validación, el mapeador determinista construye la \textit{RFQ} que emite el sistema. Este componente no interpreta de nuevo la petición ni modifica los términos financieros, sino que transforma la representación validada en una instancia del mensaje definido por el esquema. La decisión de utilizar código para esta etapa evita dedicar una llamada adicional a una tarea de ensamblaje que puede ejecutarse de forma reproducible y sin consumo de tokens.
-
-El tercer agente, denominado agente proto, se conserva como componente experimental. Recibe los términos ya validados y trata de serializarlos conforme al mismo esquema. Se ejecuta después del mapeador determinista y su salida se compara con la \textit{RFQ} de referencia que este ha producido. El resultado del agente proto no sustituye ni modifica la \textit{RFQ} emitida, incluso cuando ambas salidas sean diferentes.
-
-Esta organización permite medir la fidelidad de serialización del agente proto sin introducirlo como dependencia operativa. La comparación distingue entre una coincidencia completa, una salida protobuf válida pero diferente, una salida que no puede analizarse y los casos en los que el agente no produce una salida evaluable. Estos últimos no se consideran fallos de serialización, bien porque el flujo se detuvo antes de disponer de una operación válida, bien porque la llamada al proveedor falló. Los errores del proveedor se registran por separado y no se atribuyen a la capacidad de serialización del modelo.
-
-Los tres agentes comparten la misma capa de acceso a proveedores. Esta capa transforma las respuestas de las distintas interfaces en una representación común y registra la información necesaria para la evaluación. De esta forma, las diferencias en el formato de las solicitudes, las respuestas y el cómputo de tokens no se propagan a la lógica financiera ni al sistema de coordinación.
-
-En conjunto, la red separa cuatro responsabilidades: clasificar el producto, interpretar sus términos, comprobar su validez y ensamblar la salida. Los dos primeros procesos requieren comprender lenguaje natural y se asignan al orquestador y al especialista. Los dos últimos se resuelven mediante código determinista. El agente proto permanece fuera del camino de emisión y convierte una posible redundancia arquitectónica en una pregunta experimental medible.
-
+El mapeador se mantiene en el camino operativo porque la serialización no requiere interpretación. El agente proto permite comprobar empíricamente esta decisión. La arquitectura multiagente no se presenta como superior de forma universal; la comparación directa con una solución monolítica queda fuera de la evaluación y se propone como trabajo futuro.
 
 \section{Capa de validación}
+\label{sec:capa_validacion}
 
-La capa de validación determina si los términos producidos por el agente especialista pueden convertirse en una \textit{RFQ}. Se implementa mediante reglas deterministas en Python y se ejecuta después de la extracción y antes del mapeo y la serialización. Esta posición es esencial: una operación que no supera las comprobaciones no puede alcanzar la salida emitida por el sistema.
+La validación se ejecuta después de analizar y normalizar la salida del especialista y antes de mapear la operación. Su función es impedir que una estructura formalmente correcta avance con términos ausentes o incompatibles.
 
-Antes de aplicar las reglas, los valores extraídos se normalizan. La divisa, las convenciones de recuento de días, las frecuencias, el índice, el tenor y la naturaleza del tipo flotante se convierten a mayúsculas. También se asigna un diferencial igual a cero cuando la petición no especifica ninguno, ya que esta ausencia corresponde a la convención inequívoca de un \textit{swap vanilla} sin diferencial. La normalización se realiza una sola vez para que el validador, el mapeador determinista y el agente proto reciban los mismos términos.
+La Tabla~\ref{tab:grupos_validacion} agrupa las principales reglas.
 
-La validación distingue entre campos obligatorios ausentes y errores cometidos durante la extracción. Los siete campos obligatorios son el propósito de la \textit{RFQ}, las fechas de valoración, inicio y vencimiento, la divisa, el nocional y la dirección de la operación. Si falta alguno de ellos, el informe identifica el campo y genera una aclaración sobre la información necesaria. El sistema no reintenta estos casos porque una nueva extracción no puede recuperar un dato que la petición original no contiene.
+\begin{table}[H]
+\centering
+\small
+\caption{Grupos de reglas de validación}
+\label{tab:grupos_validacion}
+\begin{tabular}{|P{3.4cm}|P{9.4cm}|}
+\hline
+\textbf{Grupo} & \textbf{Comprobaciones principales} \\
+\hline
+Completitud & Presencia de los siete campos obligatorios y de los atributos necesarios de cada pata. \\
+\hline
+Propósito & Tipo fijo ausente en \texttt{PAR\_RATE\_QUOTE} y presente en \texttt{VALUATION}. \\
+\hline
+Coherencia básica & Nocional positivo, valores plausibles y fechas válidas y ordenadas. \\
+\hline
+Convenciones & Bases, frecuencias, tipo flotante, tenor, curvas y compatibilidad entre divisa e índice. \\
+\hline
+Calendarios & Fechas crecientes, sin duplicados, dentro del plazo y con último pago en el vencimiento. \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia.}
+\end{table}
 
-Los errores de extracción reciben un tratamiento diferente. En esta categoría se incluyen una convención incompatible con la divisa y el vencimiento, un calendario incoherente, una relación incorrecta entre el propósito y el tipo fijo o un valor que incumple los límites de plausibilidad. Cuando no falta ningún campo obligatorio y existe al menos uno de estos errores, el informe marca el resultado como susceptible de corrección. El diagnóstico se incorpora entonces a una nueva solicitud dirigida al agente especialista.
+Las convenciones derivadas se contrastan con las reglas de EUR y USD. Si la petición enuncia una alternativa compatible, esta prevalece. La detección de que un término fue expresado se realiza mediante un vocabulario cerrado, por lo que reconoce formas conocidas pero no comprende cualquier redacción equivalente. La compatibilidad esencial entre divisa e índice no puede anularse como convención alternativa.
 
-El primer grupo de reglas comprueba la coherencia básica de la operación. El nocional debe ser positivo. El tipo fijo, cuando esté presente, no puede ser negativo ni superior a uno cuando se expresa en tanto por uno. Las fechas deben encontrarse dentro del intervalo considerado plausible, entre 1990 y 2125. La fecha de inicio debe preceder al vencimiento, la fecha de valoración no puede ser posterior a este y la duración del \textit{swap} no puede superar sesenta años.
+El informe de validación contiene los errores, los campos ausentes y una indicación de si procede reintentar. Los datos ausentes producen un final explícito; los errores corregibles regresan al especialista con la petición original y el diagnóstico. El proceso termina al obtener una operación válida, detectar una ausencia no recuperable o alcanzar cinco pasadas.
 
-El propósito de la petición se valida junto con la presencia del tipo fijo. Una cotización identificada como \texttt{PAR\_RATE\_QUOTE} debe omitirlo, dado que el tipo par constituye la incógnita solicitada. Una petición \texttt{VALUATION}, en cambio, debe incluir el tipo al que se contrató el \textit{swap}. Esta comprobación entre atributos evita aceptar mensajes cuyos campos sean válidos de manera aislada, pero describan una petición incoherente en conjunto.
-
-La capa también comprueba los valores pertenecientes a dominios cerrados. Las convenciones de recuento de días y las frecuencias deben encontrarse entre las admitidas. La naturaleza del tipo flotante debe corresponder a uno de los valores definidos. Cuando se utiliza un índice IBOR, el tenor resulta necesario; cuando se utiliza un tipo a un día compuesto, debe estar ausente porque no existe un plazo de fijación independiente.
-
-Las convenciones derivadas por el especialista se contrastan con las reglas correspondientes a la divisa y al vencimiento. Para EUR, la convención aplicable depende de si el vencimiento es de un año o superior. Para USD se exige la estructura de un OIS contra SOFR compuesto. Los vencimientos inferiores a un año y las divisas distintas de EUR y USD se consideran fuera del alcance.
-
-Una petición puede especificar una convención distinta de la estándar. Para distinguir este caso de una derivación incorrecta, el validador comprueba si el texto original contiene una expresión asociada al término correspondiente. Esta comprobación utiliza un vocabulario cerrado de frecuencias, bases de cálculo, tenores y referencias a curvas. Si el término aparece en la petición, se respeta la convención solicitada; si no aparece, el valor producido por el especialista debe coincidir con la convención estándar.
-
-Este mecanismo presenta una limitación conocida. La detección de términos enunciados es léxica: identifica determinadas palabras y abreviaturas, pero no interpreta el significado completo de la frase. Una expresión que no forme parte del vocabulario puede no reconocerse como una convención especificada por el solicitante. En ese caso, el sistema adopta el comportamiento más restrictivo y exige la convención estándar.
-
-La compatibilidad entre divisa e índice no puede modificarse mediante una convención no estándar. Un \textit{swap} en EUR contra SOFR, por ejemplo, no se considera un \textit{IRS vanilla} con una convención alternativa, sino una operación que combina referencias de divisas diferentes y queda fuera del alcance. Esta regla impide que la detección léxica autorice una estructura financiera perteneciente a otro producto.
-
-Los calendarios de las patas fija y flotante se validan de forma independiente. Cada vector debe contener fechas en orden ascendente, sin duplicados, posteriores a la fecha de inicio y no posteriores al vencimiento. La última fecha debe coincidir con el vencimiento de la operación. El número de pagos se contrasta de manera aproximada con la frecuencia declarada, admitiendo una desviación de hasta dos fechas respecto al número que correspondería a un calendario regular, para no rechazar los periodos irregulares.
-
-El resultado se recoge en un informe con cuatro elementos: el estado válido o inválido, los errores detectados, los campos obligatorios ausentes y las aclaraciones destinadas al solicitante. El informe determina además si tiene sentido realizar otro intento. Solo los errores de extracción sin campos obligatorios ausentes activan el bucle de autocorrección.
-
-En cada reintento, el agente especialista recibe la petición original junto con los motivos exactos del rechazo anterior. El sistema le solicita que corrija esos puntos sin modificar el resto de la operación. La petición original se conserva por separado para decidir qué convenciones había expresado realmente el solicitante, de modo que las instrucciones añadidas durante la corrección no se confundan con el contenido original.
-
-El proceso finaliza cuando se obtiene una operación válida, cuando se detecta información obligatoria ausente o cuando se alcanza el límite de cinco intentos. En el primer caso, los términos pasan al mapeador determinista. En los otros dos, el sistema devuelve un error y no genera ninguna \textit{RFQ}. El límite evita iteraciones indefinidas y acota el coste y la latencia de una ejecución.
-
-La capa de validación no sustituye el contrato estructural proporcionado por \textit{Protocol Buffers}. Ambas cumplen funciones complementarias. El esquema determina si una salida puede interpretarse conforme a los mensajes y tipos definidos; el validador comprueba si esa instancia está completa, resulta plausible y mantiene la coherencia financiera necesaria. Esta combinación impide aceptar una operación solo porque su representación sea sintácticamente correcta.
-
+Protobuf y el validador cumplen funciones complementarias. El primero asegura que la salida tenga una estructura reconocible; el segundo comprueba su significado financiero. Solo después de ambos controles se genera la \textit{RFQ}.
 
 \section{Abstracción del proveedor de modelo}
+\label{sec:abstraccion_proveedor}
 
-El sistema compara modelos pertenecientes a dos proveedores con interfaces diferentes. Para impedir que estas diferencias afecten a la lógica financiera o al flujo de agentes, se definió una capa común de acceso a los modelos. Esta abstracción separa la selección y ejecución del proveedor de las responsabilidades de clasificación, extracción y serialización.
+OpenAI y Anthropic utilizan interfaces distintas para enviar instrucciones, devolver respuestas e informar del consumo. Una capa común oculta estas diferencias y entrega al resto del sistema el texto generado, los tokens de entrada y salida, el total y los tokens servidos desde caché cuando el proveedor los comunica.
 
-La aplicación deduce el proveedor a partir del identificador del modelo. La función encargada de esta selección asigna Anthropic cuando el nombre comienza por \texttt{claude} y OpenAI en los demás casos. Esta convención evita declarar el proveedor en cada invocación, pero introduce una dependencia respecto a la nomenclatura utilizada por cada proveedor y a la estabilidad de sus prefijos.
+El proveedor se deduce del identificador del modelo y la configuración permanece separada de las instrucciones. Así puede ejecutarse el mismo agente con modelos de ambos proveedores sin modificar el esquema, el validador ni el flujo. Las credenciales se obtienen de la configuración local y no se almacenan en el repositorio.
 
-Los agentes no necesitan conocer si la respuesta procede de OpenAI o Anthropic. Reciben el texto generado y la información de uso mediante una representación común, lo que permite ejecutar el mismo flujo y aplicar los mismos criterios de evaluación a todos los modelos.
+La telemetría distingue una respuesta incorrecta de un fallo externo. Si el proveedor devuelve contenido que incumple el contrato, la ejecución cuenta como resultado del modelo. Si no devuelve respuesta por red, autenticación o disponibilidad, el error se registra y queda fuera de los agregados de capacidad.
 
-Las interfaces de los proveedores difieren en la forma de enviar las instrucciones, estructurar las respuestas y comunicar el consumo de tokens. También utilizan excepciones distintas para los errores de red, autenticación, límites de uso o parámetros no admitidos. La capa común adapta estas diferencias y devuelve al resto de la aplicación un resultado homogéneo.
+Las diferencias de uso también se normalizan. OpenAI incluye los tokens de caché dentro de la entrada; Anthropic los comunica por separado. Las tarifas de entrada, caché y salida se conservan en un archivo independiente para poder calcular y, si es necesario, reconstruir los costes desde los tokens archivados.
 
-La respuesta normalizada contiene el texto producido, los tokens de entrada, los tokens de salida, el total y los tokens de entrada servidos desde caché cuando el proveedor comunica esta información. El identificador del modelo y la latencia los registra el cliente que realiza la llamada. Esta normalización evita que la telemetría y el evaluador necesiten ramas específicas para cada proveedor.
+La temperatura se trata como una capacidad que el proveedor puede rechazar. Los modelos evaluados no permitieron fijarla: OpenAI devolvió un error al recibir el valor y el cliente de Anthropic lo rechazó antes de la llamada. El sistema reintentó sin el parámetro. Esta adaptación permitió mantener el flujo común, aunque impide apoyar la reproducibilidad en una temperatura igual a cero.
 
-La gestión de la caché resulta relevante porque las instrucciones del agente, el esquema y las reglas del producto forman un prefijo extenso que se repite entre los casos de una misma tanda. Cuando el proveedor sirve parte de esta entrada desde caché, el número de tokens procesados y su precio pueden diferir de una entrada no almacenada. Por ello, los tokens cacheados se registran por separado y se utilizan al calcular el coste real de cada llamada.
-
-Las tarifas de los modelos no se incorporan directamente a la lógica del programa. Se conservan en un archivo de configuración independiente que recoge los precios de entrada, salida y caché. Esta decisión permite actualizar una tarifa sin modificar el código. No obstante, como el coste calculado se almacena en el momento de la ejecución, una modificación posterior de la tarifa no altera automáticamente los valores ya persistidos. Para resolver esa situación se conservan los recuentos de tokens y se dispone de un proceso de recálculo.
-
-La temperatura recibió un tratamiento específico. Inicialmente se contempló utilizarla para reducir la variabilidad de las respuestas, pero los modelos evaluados no permiten configurarla. La capa de proveedor trata la temperatura como una capacidad que puede rechazarse. En OpenAI, el rechazo llega como un error del servicio y la llamada se repite sin el parámetro; en Anthropic, la propia capa lo descarta antes de contactar con el proveedor, sin consumir una llamada. En ambos casos, el resto del sistema recibe el mismo comportamiento y no se mantiene una lista fija de modelos compatibles que quedaría obsoleta con nuevos lanzamientos.
-
-Esta limitación tiene una consecuencia metodológica. Los modelos no pueden compararse bajo una temperatura fijada a cero y la reproducibilidad no puede apoyarse en ese parámetro. Por este motivo, la comparación conserva constantes los casos, las instrucciones, el esquema y el procedimiento de evaluación, y registra cada tanda y sus salidas como evidencia independiente.
-
-La abstracción también distingue entre una salida incorrecta del modelo y un fallo del proveedor. Una respuesta mal formada, que incumple el contrato o contiene términos erróneos, se considera un resultado del modelo y se incluye en las métricas. En cambio, una llamada que no produce respuesta por un fallo externo se registra por separado y no se utiliza como evidencia de la capacidad del modelo. Esta distinción se aplica también al agente proto cuando no puede ejecutarse por un error del servicio.
-
-La configuración del modelo se mantiene separada de las instrucciones de los agentes. Esto permite ejecutar el mismo agente con distintos modelos sin duplicar su definición. También facilita incorporar un nuevo proveedor: la extensión requiere implementar la interfaz común, definir el criterio para reconocer sus modelos y adaptar su respuesta, pero no modificar el validador, el mapeador, el esquema ni las reglas financieras.
-
-Las credenciales se obtienen desde la configuración local y no se almacenan en el repositorio. El código y los archivos versionados contienen únicamente los nombres de las variables necesarias, no sus valores. Esta separación permite reproducir la configuración técnica sin exponer secretos de acceso.
-
-En conjunto, la abstracción del proveedor permite que la comparación se centre en el comportamiento de los modelos y no en diferencias accidentales entre sus interfaces. La capa absorbe el formato de las llamadas, normaliza el uso de tokens, permite calcular los costes con criterios comunes y separa los fallos externos de las salidas incorrectas. El resto de la arquitectura opera así sobre un contrato estable independiente del proveedor.
+En conjunto, la abstracción hace comparables las ejecuciones sin ocultar las diferencias relevantes. La lógica financiera opera sobre un contrato estable y la telemetría conserva la información necesaria para interpretar costes, latencias y errores de cada proveedor.

@@ -134,7 +134,8 @@ def write(family: str, name: str, prompt: str, golden: str | None) -> None:
 
 # ==========================================================================
 # COTIZACION. El caso habitual en una mesa: el cliente pide precio, asi que no
-# aporta el tipo fijo. Son los casos que propuso el tutor.
+# aporta el tipo fijo. Los casos fueron elaborados por el autor a partir de las
+# pautas del tutor sobre los campos obligatorios y el alcance.
 # ==========================================================================
 
 write("cotizacion", "es_spot_5y", """

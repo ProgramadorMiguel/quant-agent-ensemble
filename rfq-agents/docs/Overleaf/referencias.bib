@@ -78,13 +78,6 @@
   doi          = {10.2478/eoik-2025-0063}
 }
 
-@misc{smith2024qtcai,
-  author       = {Smith, Hussein Kamaldeen},
-  title        = {End-to-End AI Optimization in Quote-to-Cash: Automating Pricing, Contracting, and Revenue Recognition in Hyperscale Data Centers},
-  year         = {2024},
-  note         = {Unpublished manuscript / PDF shared by user},
-  file         = {C:/Users/mprietol/Downloads/End.pdf}
-}
 
 @book{hull2021derivatives,
   author       = {Hull, John C.},
@@ -163,7 +156,7 @@
       url          = {https://hdl.handle.net/10016/48560},
       urldate      = {2026-09-17}
     }
-    
+
 
 @online{opengamma2024conventions,
   author       = {{OpenGamma}},
@@ -171,9 +164,9 @@
   year         = {2024},
   url          = {https://quant.opengamma.io/Interest-Rate-Instruments-and-Market-Conventions.pdf},
   urldate      = {2026-09-21},
-  note         = {Referencia sectorial de convenciones de mercado, citada por la
-                  libreria OpenGamma Strata como fuente de sus convenciones
-                  estandar}
+  note         = {Referencia sectorial de convenciónes de mercado, citada por la
+                  librería OpenGamma Strata como fuente de sus convenciónes
+                  estándar}
 }
 
 @software{opengamma2026strata,
@@ -185,7 +178,7 @@
   urldate      = {2026-09-21},
   note         = {Convenciones verificadas en las clases
                   \texttt{StandardFixedIborSwapConventions} y
-                  \texttt{StandardFixedOvernightSwapConventions} del modulo
+                  \texttt{StandardFixedOvernightSwapConventions} del módulo
                   \texttt{product}}
 }
 
@@ -197,8 +190,8 @@
   url          = {https://www.newyorkfed.org/arrc/sofr-transition},
   urldate      = {2026-09-21},
   note         = {Confirma el cese de todos los paneles de {USD} {LIBOR} el 30 de
-                  junio de 2023 y la adopcion de {SOFR} como referencia dominante
-                  en dolar}
+                  junio de 2023 y la adopción de {SOFR} como referencia dominante
+                  en dólar}
 }
 
 @software{quantlib2026,
@@ -219,8 +212,8 @@
   year         = {2026},
   url          = {https://platform.openai.com/docs/pricing},
   urldate      = {2026-09-21},
-  note         = {Tarifas de la generacion {gpt-5.6} y {gpt-6}, modo estandar y
-                  contexto corto. Los modelos de la generacion {gpt-4.1} ya no
+  note         = {Tarifas de la generación {gpt-5.6} y {gpt-6}, modo estándar y
+                  contexto corto. Los modelos de la generación {gpt-4.1} ya no
                   figuran en la tabla}
 }
 
@@ -231,7 +224,7 @@
   url          = {https://docs.claude.com/en/docs/about-claude/pricing},
   urldate      = {2026-09-21},
   note         = {Tabla \emph{Model pricing}: entrada, escrituras y aciertos de
-                  cache, y salida, por millon de tokens}
+                  caché, y salida, por millón de tokens}
 }
 
 @online{anthropic2026models,
@@ -240,6 +233,158 @@
   year         = {2026},
   url          = {https://docs.anthropic.com/en/docs/about-claude/models/overview},
   urldate      = {2026-09-21},
-  note         = {Identificadores de {API}, ventana de contexto y limites de
+  note         = {Identificadores de {API}, ventana de contexto y límites de
                   salida de cada modelo}
 }
+
+
+% ---------------------------------------------------------------------------
+% Transicion LIBOR -> SOFR y convenciónes del producto (fuentes aportadas
+% por el tutor academico, 2026-09-22). Distinguir tres planos:
+%   (1) cese de USD LIBOR            -> arrc2023closing
+%   (2) adopción de SOFR como tasa   -> arrc2021usersguide, isdaSofrGoodFriday
+%   (3) convenciónes del producto    -> cme2026sofrswaps, opengamma2026strata,
+%                                       quantlib2026
+% ---------------------------------------------------------------------------
+
+@online{arrc2021usersguide,
+  author       = {{Alternative Reference Rates Committee}},
+  title        = {A User's Guide to {SOFR}},
+  organization = {Federal Reserve Bank of New York},
+  year         = {2021},
+  url          = {https://www.newyorkfed.org/medialibrary/Microsites/arrc/files/2021/users-guide-to-sofr2021-update.pdf},
+  urldate      = {2026-09-22},
+  note         = {Actualización 2021. Documento de referencia del {ARRC} sobre el
+                  uso de {SOFR}: media simple frente a capitalización compuesta,
+                  convenciónes \emph{in arrears} y cálculo del interés compuesto
+                  diario aplicable a los {OIS} en dólar}
+}
+
+@online{isdaSofrGoodFriday,
+  author       = {{International Swaps and Derivatives Association}},
+  title        = {{SOFR} Good Friday Notification},
+  year         = {2026},
+  url          = {https://www.isda.org/a/ORtiE/SOFR-Good-Friday-Notification_April-26-Final.pdf},
+  urldate      = {2026-09-22},
+  note         = {Notificación de {ISDA} sobre el tratamiento de {SOFR} en días
+                  no hábiles de mercado (Good Friday): evidencia de que el
+                  calendario de publicación del indice es parte de la
+                  convención del producto y no un detalle accesorio}
+}
+
+@online{cme2026sofrswaps,
+  author       = {{CME Group}},
+  title        = {Cleared {OTC} {SOFR} Swaps},
+  year         = {2026},
+  url          = {https://www.cmegroup.com/trading/interést-rates/cleared-otc-sofr-swaps.html},
+  urldate      = {2026-09-22},
+  note         = {Especificaciones del contrato compensado en cámara: {SOFR}
+                  compuesto, ambas patas anuales {ACT}/360, plazos admitidos y
+                  convenciónes de pago. Fuente de mercado que corrobora la
+                  convención \texttt{USD\_FIXED\_1Y\_SOFR\_OIS}}
+}
+
+
+    @legal{boe2023consultoria,
+      author       = {{Ministerio de Trabajo y Economía Social}},
+      title        = {XVIII Convenio colectivo estatal de empresas de consultoría, tecnologías de la información y estudios de mercado y de la opinión pública},
+      year         = {2023},
+      organization = {Boletín Oficial del Estado},
+      number       = {BOE-A-2023-17238},
+      url          = {https://www.boe.es/buscar/act.php?id=BOE-A-2023-17238},
+      urldate      = {2026-09-23},
+      note         = {Artículo 20: jornada máxima de 1.800 horas anuales. Anexo I: salario anual de 22.503,15 euros para el Área 3, grupo C, nivel 3, en 2024}
+    }
+
+
+
+@online{uc3m2026fintech,
+  author       = {{Universidad Carlos III de Madrid}},
+  title        = {Máster Universitario en Tecnologías del Sector Financiero: FinTech},
+  year         = {2026},
+  url          = {https://www.uc3m.es/master/fintech},
+  urldate      = {2026-09-23}
+}
+
+
+    @article{yang2023fingpt,
+      author       = {Yang, Hongyang and Liu, Xiao-Yang and Wang, Christina Dan},
+      title        = {{FinGPT}: Open-Source Financial Large Language Models},
+      journal      = {arXiv preprint arXiv:2306.06031},
+      year         = {2023},
+      doi          = {10.48550/arXiv.2306.06031},
+      url          = {https://arxiv.org/abs/2306.06031},
+      urldate      = {2026-09-23}
+    }
+
+    @article{wu2023bloomberggpt,
+      author       = {Wu, Shijie and Irsoy, Ozan and Lu, Steven and Dabravolski, Vadim and Dredze, Mark and Gehrmann, Sebastian and Kambadur, Prabhanjan and Rosenberg, David and Mann, Gideon},
+      title        = {{BloombergGPT}: A Large Language Model for Finance},
+      journal      = {arXiv preprint arXiv:2303.17564},
+      year         = {2023},
+      doi          = {10.48550/arXiv.2303.17564},
+      url          = {https://arxiv.org/abs/2303.17564},
+      urldate      = {2026-09-23}
+    }
+
+    @article{wang2024agentsurvey,
+      author       = {Wang, Lei and Ma, Chen and Feng, Xueyang and Zhang, Zeyu and Yang, Hao and Zhang, Jingsen and Chen, Zhiyuan and Tang, Jiakai and Chen, Xu and Lin, Yankai and Zhao, Wayne Xin and Wei, Zhewei and Wen, Ji-Rong},
+      title        = {A Survey on Large Language Model Based Autonomous Agents},
+      journal      = {Frontiers of Computer Science},
+      year         = {2024},
+      doi          = {10.1007/s11704-024-40231-1},
+      url          = {https://arxiv.org/abs/2308.11432},
+      urldate      = {2026-09-23}
+    }
+
+    @article{sahoo2024promptengineering,
+      author       = {Sahoo, Pranab and Singh, Ayush Kumar and Saha, Sriparna and Jain, Vinija and Mondal, Samrat and Chadha, Aman},
+      title        = {A Systematic Survey of Prompt Engineering in Large Language Models: Techniques and Applications},
+      journal      = {arXiv preprint arXiv:2402.07927},
+      year         = {2024},
+      doi          = {10.48550/arXiv.2402.07927},
+      url          = {https://arxiv.org/abs/2402.07927},
+      urldate      = {2026-09-23}
+    }
+
+
+
+    @article{mridul2025ai4contracts,
+      author       = {Mridul, Maruf Ahmed and Sloyan, Ian and Gupta, Aparna and Seneviratne, Oshani},
+      title        = {{AI4Contracts}: {LLM} and {RAG}-Powered Encoding of Financial Derivative Contracts},
+      journal      = {arXiv preprint arXiv:2506.01063},
+      year         = {2025},
+      doi          = {10.48550/arXiv.2506.01063},
+      url          = {https://arxiv.org/abs/2506.01063},
+      urldate      = {2026-09-25}
+    }
+
+    @article{mridul2025resourceefficient,
+      author       = {Mridul, Maruf Ahmed and Seneviratne, Oshani},
+      title        = {Resource-Efficient {LLM} Application for Structured Transformation of Unstructured Financial Contracts},
+      journal      = {arXiv preprint arXiv:2510.23990},
+      year         = {2025},
+      doi          = {10.48550/arXiv.2510.23990},
+      url          = {https://arxiv.org/abs/2510.23990},
+      urldate      = {2026-09-25}
+    }
+
+    @article{parekh2026cifqa,
+      author       = {Parekh, Kunjesh and Tiwari, Anil Kumar and Saxena, Divya},
+      title        = {{CIFQA}: A Deterministic Tool-Grounded Multi-Agent {LLM} Framework for Financial Query Answering},
+      journal      = {arXiv preprint arXiv:2608.26114},
+      year         = {2026},
+      doi          = {10.48550/arXiv.2608.26114},
+      url          = {https://arxiv.org/abs/2608.26114},
+      urldate      = {2026-09-25}
+    }
+
+    @online{openai2026financialservices,
+      author       = {{OpenAI}},
+      title        = {Introducing ChatGPT for Financial Services},
+      year         = {2026},
+      date         = {2026-09-10},
+      url          = {https://openai.com/index/introducing-chatgpt-financial-services/},
+      urldate      = {2026-09-25},
+      note         = {Fuente sectorial y comercial utilizada únicamente como contexto de adopción}
+    }

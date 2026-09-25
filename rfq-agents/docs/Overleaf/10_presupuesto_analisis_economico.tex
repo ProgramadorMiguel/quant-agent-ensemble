@@ -1,0 +1,140 @@
+\chapter{Presupuesto y análisis económico}
+\label{cap:presupuesto}
+
+Este capítulo valora los recursos del desarrollo y separa el coste experimental del coste operativo. Las horas proceden de la planificación del capítulo 5; los consumos de modelos, de la telemetría y de las tarifas verificadas. Los recursos ya disponibles se presentan por su coste incremental para evitar imputaciones sin respaldo.
+
+\section{Coste de desarrollo}
+\label{sec:coste_desarrollo}
+
+La dedicación prevista es de 180 horas, correspondientes a los seis créditos ECTS. Las cinco horas de seguimiento con el tutor están integradas en las fases con revisiones financieras, metodológicas y documentales y no se añaden como una fase separada.
+
+El tiempo se valora con el XVIII Convenio colectivo estatal de empresas de consultoría y tecnologías de la información. El proyecto se asimila al Área 3 de programación, grupo C, nivel 3, que describe actividades técnicas con cierta iniciativa y bajo supervisión. La tabla de 2024 fija 22.503,15 euros brutos anuales y el artículo 20 establece 1.800 horas anuales \citep{boe2023consultoria}. El coste de referencia es:
+
+\begin{equation}
+C_{\text{hora}}
+=
+\frac{22\,503{,}15}{1\,800}
+=
+12{,}50\ \text{euros/hora}.
+\end{equation}
+
+La cifra valora el tiempo dedicado; no representa un salario recibido ni el coste laboral completo de una empresa. La Tabla~\ref{tab:coste_desarrollo} distribuye el importe según las horas del capítulo 5.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Coste de desarrollo distribuido por fases}
+\label{tab:coste_desarrollo}
+\begin{tabular}{|P{5.3cm}|P{2.0cm}|P{2.5cm}|P{3.0cm}|}
+\hline
+\textbf{Fase} & \textbf{Horas} & \textbf{Peso} & \textbf{Coste estimado} \\
+\hline
+Análisis y delimitación & 18 & 10,0\,\% & 225,00 € \\
+\hline
+Representación financiera & 24 & 13,3\,\% & 300,00 € \\
+\hline
+Diseño de la solución & 20 & 11,1\,\% & 250,00 € \\
+\hline
+Implementación & 32 & 17,8\,\% & 400,00 € \\
+\hline
+Pruebas y refinamiento & 24 & 13,3\,\% & 300,00 € \\
+\hline
+Evaluación experimental & 20 & 11,1\,\% & 250,00 € \\
+\hline
+Documentación y memoria & 42 & 23,3\,\% & 525,00 € \\
+\hline
+\textbf{Total} & \textbf{180} & \textbf{100\,\%} & \textbf{2.250,00 €} \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia a partir del capítulo 5 y del convenio estatal \citep{boe2023consultoria}.}
+\end{table}
+
+No se asigna un coste independiente a la supervisión académica porque no existe una referencia aplicable sin introducir otro supuesto. Su participación permanece reflejada como recurso en la planificación.
+
+\section{Coste de infraestructura y experimentación}
+\label{sec:coste_infraestructura_experimentacion}
+
+El desarrollo se ejecutó en un equipo Windows ya disponible y la telemetría se almacenó localmente en SQLite. No se contrataron servidores, bases gestionadas ni almacenamiento. Tampoco se imputa una amortización del equipo sin disponer de su precio y vida útil documentados. Python, protobuf, SQLite, Git y las bibliotecas no generaron licencias adicionales; Overleaf se utilizó mediante acceso institucional. El coste incremental de esta infraestructura y software fue, por tanto, de cero euros.
+
+El gasto variable medido corresponde a las API. La Tabla~\ref{tab:coste_experimentacion_final} presenta las seis tandas finales, verificadas directamente en las bases archivadas.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Coste de la comparación experimental final}
+\label{tab:coste_experimentacion_final}
+\begin{tabular}{|P{4.3cm}|P{3.0cm}|P{3.0cm}|}
+\hline
+\textbf{Modelo} & \textbf{Casos} & \textbf{Coste (USD)} \\
+\hline
+\texttt{gpt-5.6-luna} & 23 & 0,0278 \\
+\hline
+\texttt{gpt-5.6-terra} & 23 & 0,2353 \\
+\hline
+\texttt{gpt-5.6-sol} & 23 & 0,4178 \\
+\hline
+\texttt{claude-haiku-4-5} & 23 & 0,2641 \\
+\hline
+\texttt{claude-sonnet-5} & 23 & 0,9215 \\
+\hline
+\texttt{claude-opus-5} & 23 & 2,0799 \\
+\hline
+\textbf{Total} & \textbf{138} & \textbf{3,9464} \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia a partir de las bases archivadas de las tandas finales.}
+\end{table}
+
+La comparación final costó 3,9464 dólares para 138 combinaciones de modelo y caso. \texttt{claude-opus-5} concentró el 52,7\,\% del gasto; la tanda completa de \texttt{gpt-5.6-luna}, menos del 1\,\%. El coste de \texttt{claude-sonnet-5} se recalculó desde los tokens tras corregir su tarifa y quedó en 0,921482 dólares.
+
+Las tandas de desarrollo no se suman porque varias bases archivadas contienen copias sucesivas de las mismas llamadas. Agregarlas produciría doble contabilización. El presupuesto usa las seis tandas finales, completas e identificables.
+
+\section{Coste operativo estimado}
+\label{sec:coste_operativo}
+
+La estimación utiliza \texttt{gpt-5.6-terra}, configuración recomendada por alcanzar 23/23 al menor coste entre los modelos sin fallos. Su tanda costó 0,235318 dólares, es decir, 0,010231 dólares por caso con estado correcto. La cifra incluye el flujo experimental completo y el agente proto cuando se ejecuta.
+
+\begin{equation}
+C_{\text{mensual}}=N_{\text{peticiones}}\cdot0{,}010231.
+\end{equation}
+
+\begin{table}[H]
+\centering
+\small
+\caption{Escenarios operativos con \texttt{gpt-5.6-terra}}
+\label{tab:escenarios_coste_operativo}
+\begin{tabular}{|P{4.0cm}|P{4.0cm}|P{4.0cm}|}
+\hline
+\textbf{Peticiones mensuales} & \textbf{Coste mensual (USD)} & \textbf{Coste anual (USD)} \\
+\hline
+1.000 & 10,23 & 122,77 \\
+\hline
+10.000 & 102,31 & 1.227,75 \\
+\hline
+100.000 & 1.023,12 & 12.277,47 \\
+\hline
+1.000.000 & 10.231,23 & 122.774,71 \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia a partir del coste medido de 0,010231 dólares por caso correcto.}
+\end{table}
+
+La proyección es lineal y mantiene el coste medio observado. En producción variaría con la longitud de las peticiones, los reintentos, la mezcla de recorridos, la caché y las tarifas. Tampoco incluye integración, seguridad, almacenamiento, supervisión ni mantenimiento.
+
+La estimación es conservadora porque el agente proto no sería necesario en producción: la \textit{RFQ} ya la genera el mapeador. Un producto rechazado tras la clasificación también cuesta menos que una operación que recorre todos los componentes; un reintento, más.
+
+\section{Relación coste-beneficio}
+\label{sec:relacion_coste_beneficio}
+
+El desarrollo se valora en 2.250 euros y el coste variable medido con \texttt{gpt-5.6-terra} en 0,010231 dólares por petición correcta. El trabajo no mide cuánto tarda una persona en interpretar y capturar una petición ni prueba la solución en un proceso operativo. Por ello, no puede afirmar un retorno de la inversión sin introducir supuestos.
+
+Si \(t\) son las horas ahorradas por petición, \(C_h\) el coste horario y \(C_{\text{API}}\) el coste operativo, el beneficio unitario y el punto de equilibrio serían:
+
+\begin{align}
+B_{\text{unitario}} &= t\,C_h-C_{\text{API}},\\
+N_{\text{equilibrio}} &= \frac{C_{\text{desarrollo}}}{B_{\text{unitario}}}.
+\end{align}
+
+Los importes deben expresarse en la misma moneda; no se fija un tipo de cambio para evitar una conversión temporal. Con 12,50 euros por hora, un minuto de trabajo vale 0,2083 euros, mientras que el consumo de API ronda un céntimo de dólar. El coste variable se compensaría con un ahorro breve, pero recuperar el desarrollo depende del volumen y del tiempo manual realmente evitado.
+
+La solución aporta además beneficios no monetizados: estructura la captura, bloquea operaciones incompletas o incoherentes y conserva una traza por etapa. Una implantación real añadiría costes de integración, accesos, protección de datos, supervisión y mantenimiento. Medir esos elementos, junto con el proceso manual y sus errores, permitiría aplicar las fórmulas anteriores sin depender de hipótesis arbitrarias.

@@ -1,106 +1,201 @@
 \chapter{Estado del arte}
+\label{cap:estado_arte}
+
+Este capítulo compara las líneas de trabajo más próximas al problema: automatización de la captura financiera, representación digital de derivados, extracción estructurada con modelos de lenguaje y arquitecturas con validación. El objetivo no es repetir el marco teórico, sino identificar qué resuelve cada alternativa, qué límites mantiene y dónde se sitúa la aportación del TFM.
 
 \section{Automatización de procesos financieros y de \textit{pricing}}
+\label{sec:automatizacion_pricing}
 
-La automatización de procesos en el sector financiero ha ganado importancia por su capacidad para reducir tiempos operativos, disminuir errores manuales y mejorar la trazabilidad. Este interés es especialmente relevante en tareas donde intervienen datos sensibles y donde pequeños fallos pueden tener impacto económico o regulatorio.
+Los motores cuantitativos automatizan el cálculo cuando reciben una operación formalizada, pero no resuelven la interpretación de una petición libre. Entre la comunicación de la mesa y el motor existe una fase de captura: identificar el producto, normalizar los términos y comprobar que la operación sea completa y coherente. La estructura financiera de un \textit{IRS} está bien definida, pero presupone que sus datos ya se encuentran organizados \citep[Definición~2.19, p.~59]{ausin2025quantitative}.
 
-Dentro de este marco, los procesos de \textit{pricing} presentan una dificultad específica. Antes de realizar una valoración, es necesario identificar correctamente las características de la operación, estructurar la información de entrada y verificar que los datos sean coherentes con el producto solicitado.
+Las alternativas tradicionales son la captura manual, los formularios y las reglas lingüísticas. La primera conserva el juicio experto, pero añade tiempo y riesgo de transcripción. Los formularios controlan tipos y obligatoriedad, aunque obligan a trasladar manualmente el mensaje a una plantilla. Las reglas son auditables para expresiones conocidas, pero pierden cobertura ante nuevos giros, idiomas o abreviaturas.
 
-En muchos casos, una petición de valoración o \textit{Request for Quotation} (\textit{RFQ}) no llega en un formato estructurado, sino en lenguaje natural, por ejemplo a través de correo electrónico o mensajería interna. Esto obliga a interpretar la operación antes de poder procesarla con un sistema cuantitativo, introduciendo lentitud, ambigüedad y riesgo de error.
-
-Por ello, la automatización de la fase previa al cálculo resulta especialmente relevante. No se trata solo de acelerar tareas manuales, sino de transformar descripciones informales en representaciones precisas, validadas y utilizables por motores de valoración. En productos como los \textit{Interest Rate Swaps} (\textit{IRS}), donde la valoración depende de parámetros contractuales concretos, la calidad de esta transformación condiciona directamente la utilidad del proceso posterior.
-
-\begin{figure}[H]
-    \centering
-    \fbox{
-        \begin{minipage}{0.85\textwidth}
-        \centering
-        Lenguaje natural / correo / chat\\
-        $\downarrow$\\
-        Interpretación de la operación\\
-        $\downarrow$\\
-        Estructuración de campos\\
-        $\downarrow$\\
-        Validación\\
-        $\downarrow$\\
-        Motor de valoración
-        \end{minipage}
-    }
-    \caption[Flujo simplificado de una petición de pricing]{Flujo simplificado de una petición de \textit{pricing}}
-    \floatfoot{Fuente: elaboración propia.}
-\end{figure}
-
-\section{Representación digital de contratos y productos derivados}
-
-La representación digital de productos derivados es un elemento esencial en los sistemas financieros modernos, ya que permite describir operaciones de forma precisa y procesable por aplicaciones informáticas. Frente al lenguaje natural, los formatos estructurados reducen la ambigüedad y facilitan la validación automática de la información.
-
-Esta necesidad es especialmente relevante en derivados, donde una misma operación puede depender de múltiples campos contractuales. Fechas, nocional, divisa, índice de referencia, frecuencia de pagos o convención de cálculo deben quedar definidos de forma explícita para evitar inconsistencias en su interpretación o en su valoración posterior.
-
-A lo largo del tiempo se han utilizado distintos formatos para representar este tipo de información. Entre ellos destacan XML y JSON como opciones generales, así como FpML, un estándar abierto orientado específicamente al intercambio electrónico y procesamiento de derivados financieros \citep{fpml-home}. Estos enfoques han mejorado la interoperabilidad entre sistemas, aunque también pueden resultar extensos o complejos según el caso de uso.
-
-En este contexto, \textit{Protocol Buffers} constituye una alternativa orientada a la definición de estructuras tipadas, compactas y eficientes. No se trata de un estándar sectorial específico para derivados, como sí ocurre con FpML, pero sí de una tecnología ampliamente utilizada para serialización de datos, almacenamiento e intercambio de mensajes entre servicios \citep{protobuf-overview}. Por ello, su interés en este trabajo no radica en su adopción como estándar de mercado, sino en sus ventajas técnicas para modelar operaciones de forma rigurosa, validable e integrable en flujos internos de procesamiento.
-
-Para un sistema que transforma lenguaje natural en una RFQ estructurada, la existencia de un esquema formal resulta especialmente valiosa. No solo permite representar la operación de manera consistente, sino también separar con claridad la definición del producto, la instancia concreta solicitada y las validaciones necesarias antes de su uso en un motor de valoración.
+Los modelos de lenguaje cubren mejor esa variación, pero trasladan el riesgo hacia omisiones, inferencias injustificadas y formato. Por ello, su utilidad no depende solo de comprender el texto, sino de integrarse con un contrato y controles posteriores.
 
 \begin{table}[H]
-\ttabbox[\FBwidth]
-{\caption{Comparación entre formatos de representación de operaciones financieras}
-\floatfoot{Fuente: elaboración propia a partir de \textcite{fpml-home} y \textcite{protobuf-overview}.}}
-{\begin{tabular}{|P{2.5cm}|P{1.8cm}|P{1.3cm}|P{2.6cm}|P{2.8cm}|P{3.2cm}|}
+\centering
+\small
+\caption{Alternativas para capturar una petición financiera}
+\label{tab:alternativas_captura_financiera}
+\begin{tabular}{|P{2.8cm}|P{4.6cm}|P{5.2cm}|}
 \hline
-\textbf{Formato} & \textbf{Ambigüedad} & \textbf{Tipado} & \textbf{Ventaja principal} & \textbf{Limitación principal} & \textbf{Decisión en este trabajo} \\
+\textbf{Alternativa} & \textbf{Fortaleza} & \textbf{Límite} \\
 \hline
-Lenguaje natural & Alta & No & Flexible y fácil de usar por humanos & Difícil de validar automáticamente & Formato de entrada \\
+Captura manual & Juicio experto ante casos atípicos. & Coste operativo y posibles errores de transcripción. \\
 \hline
-JSON / XML & Media & Parcial & Permiten estructurar e intercambiar datos & Requieren definir bien el esquema & Descartado por menor control semántico \\
+Formulario & Control inmediato de campos y tipos. & No interpreta mensajes ya redactados. \\
 \hline
-FpML & Baja & Sí & Estándar específico para derivados financieros & Puede ser extenso y complejo & Descartado por complejidad \\
+Reglas lingüísticas & Trazabilidad para patrones conocidos. & Cobertura rígida ante variación lingüística. \\
 \hline
-Protocol Buffers & Baja & Sí & Mensajes compactos, tipados y eficientes & No es un estándar sectorial de mercado & Elegido por tipado y validación \\
+LLM con validación & Interpretación flexible y salida estructurada. & Riesgo de omisión, alucinación o incumplimiento del contrato. \\
 \hline
-\end{tabular}}
+\end{tabular}
+\floatfoot{Fuente: elaboración propia.}
 \end{table}
 
+El interés sectorial por integrar modelos, datos verificados, citas granulares y controles empresariales confirma la relevancia práctica de esta capa. La presentación de ChatGPT for Financial Services, por ejemplo, destaca la unión de datos financieros, trazabilidad hasta tablas o pasajes y controles de seguridad. Al tratarse de una comunicación comercial, se utiliza como contexto de adopción y no como evidencia académica de rendimiento \citep{openai2026financialservices}.
+
+\section{Representación digital de contratos y productos derivados}
+\label{sec:representacion_digital_derivados}
+
+FpML representa productos y procesos de derivados mediante XML, mientras que el \textit{Common Domain Model} de ISDA busca una definición común de productos y acontecimientos de negocio \citep{fpml-home,isda2023cdm}. Ambos favorecen la interoperabilidad, pero parten de información ya formalizada: no convierten por sí solos una petición libre en una operación correcta.
+
+Los formatos generales, como JSON, y los contratos técnicos, como protobuf, ofrecen menos semántica financiera pero mayor facilidad para una aplicación acotada. Protobuf integra tipos, enumeraciones, anidamiento y generación de código desde un único esquema \citep{protobuf-overview}. Su límite es complementario: puede validar la forma, no el significado económico.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Comparación crítica de alternativas de representación}
+\label{tab:formatos_estado_arte}
+\begin{tabular}{|P{2.6cm}|P{3.6cm}|P{3.4cm}|P{3.6cm}|}
+\hline
+\textbf{Alternativa} & \textbf{Objetivo} & \textbf{Aporta} & \textbf{No resuelve} \\
+\hline
+JSON con esquema & Intercambio general. & Legibilidad y ecosistema amplio. & Semántica financiera sin reglas adicionales. \\
+\hline
+FpML & Intercambio de derivados. & Cobertura sectorial extensa. & Interpretación del texto original. \\
+\hline
+ISDA CDM & Modelo común del ciclo de vida. & Conceptos y acontecimientos de negocio. & Extracción fiable desde lenguaje libre. \\
+\hline
+Protocol Buffers & Contrato técnico tipado. & Estructura, enumeraciones y código generado. & Coherencia financiera de una instancia. \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia a partir de \textcite{fpml-home}, \textcite{isda2023cdm} y \textcite{protobuf-overview}.}
+\end{table}
+
+La comparación muestra dos problemas distintos: representar una operación y obtenerla desde texto. Un estándar amplio no elimina el trabajo de extracción; un formato tipado tampoco sustituye las reglas financieras. La solución de este TFM usa protobuf como contrato reducido y mantiene las convenciones y la validación en código.
+
 \section{Extracción estructurada de información con LLM}
+\label{sec:extraccion_estructurada_llm}
 
-Los modelos de lenguaje de gran tamaño han ampliado de forma notable las posibilidades de extraer información estructurada a partir de texto libre. Esta capacidad resulta especialmente útil en contextos donde la entrada no sigue un formato fijo, como ocurre en muchas solicitudes financieras redactadas en lenguaje natural \citep{roychoudhury2024gpt3ie}.
+Los LLM permiten adaptar la extracción mediante instrucciones y esquemas sin entrenar una plantilla específica para cada redacción. La ingeniería de \textit{prompts} guía el contexto y el formato, pero su eficacia depende de que la especificación sea precisa \citep{sahoo2024promptengineering}. Otros trabajos muestran su capacidad para construir representaciones estructuradas desde texto, aunque siguen requiriendo controles sobre completitud y soporte de cada dato \citep{roychoudhury2024gpt3ie,bechard2024structuredrag}.
 
-Sin embargo, transformar una descripción textual en una estructura formal no es una tarea trivial para un LLM. La dificultad no reside solo en identificar entidades o valores aislados, sino en construir una representación completa, coherente y ajustada a las restricciones del producto financiero. En este proceso pueden aparecer ambigüedades, campos omitidos, expresiones equivalentes con distinta redacción o información implícita que el modelo debe interpretar correctamente.
+La literatura más próxima es AI4Contracts, que presenta CDMizer para transformar contratos OTC no estructurados en ISDA CDM. Utiliza plantillas, LLM y recuperación aumentada para extraer de forma incremental, preservar jerarquías y alinear la salida con un esquema \citep{mridul2025ai4contracts}. Su extensión posterior aplica el enfoque a cláusulas de acuerdos de garantía y muestra que un modelo abierto más pequeño puede competir con modelos propietarios en precisión y eficiencia \citep{mridul2025resourceefficient}.
 
-A ello se añade un problema bien conocido en este tipo de modelos: la generación de salidas plausibles que no siempre son correctas. En un contexto financiero, esta limitación es especialmente relevante, ya que un campo omitido, inferido incorrectamente o directamente inventado puede alterar de forma sustancial la representación final de la operación \citep{bechard2024structuredrag}.
+Esta línea se acerca al TFM porque combina texto financiero, estructura jerárquica y validación. Las diferencias son relevantes. CDMizer procesa documentos contractuales largos y genera CDM mediante plantillas y RAG; este trabajo procesa peticiones breves de mesa, deriva convenciones del producto y mide el recorrido desde clasificación hasta \textit{RFQ}. AI4Contracts propone además evaluación asistida por LLM, mientras que aquí la referencia, la validación y las métricas de campos son deterministas.
 
-Por este motivo, la extracción estructurada con LLM no debe abordarse como una tarea puramente generativa, sino como un problema que requiere restricciones, validaciones y criterios de evaluación claros. El interés no está únicamente en que la salida sea legible, sino en que respete el esquema esperado, conserve la información presente en la entrada y evite introducir contenido no justificado.
+La salida estructurada no garantiza corrección semántica. Un modelo puede respetar el esquema y rellenarlo con valores sin respaldo; también puede comprender el contenido y fallar el formato. Las restricciones de salida pueden modificar el rendimiento y no aseguran adherencia total \citep{tam2024formatrestrictions}. Por ello conviene separar validez sintáctica, exactitud del contenido, omisiones y alucinaciones.
 
-En consecuencia, los trabajos en esta línea suelen combinar la flexibilidad interpretativa de los LLM con mecanismos adicionales de control. Entre ellos destacan el uso de esquemas de salida, instrucciones acotadas y validaciones deterministas posteriores, así como métricas que permitan evaluar omisiones, errores de asignación y alucinaciones. Este enfoque resulta especialmente adecuado en tareas como la conversión de lenguaje natural a RFQ estructuradas, donde la calidad de la representación condiciona directamente el valor de todo el flujo posterior.
+\begin{table}[H]
+\centering
+\small
+\caption{Trabajos próximos de transformación estructurada}
+\label{tab:trabajos_extraccion_proximos}
+\begin{tabular}{|P{3.0cm}|P{3.6cm}|P{3.6cm}|P{3.6cm}|}
+\hline
+\textbf{Trabajo} & \textbf{Entrada y salida} & \textbf{Control} & \textbf{Diferencia principal} \\
+\hline
+GPT-3 IE & Texto a base de conocimiento. & Extracción asistida por modelo. & Dominio general, sin contrato financiero. \\
+\hline
+Structured RAG & Texto a salida estructurada. & Recuperación para reducir alucinación. & No modela el flujo de una RFQ de derivados. \\
+\hline
+AI4Contracts / CDMizer & Contrato OTC a ISDA CDM. & Plantillas, RAG y generación jerárquica. & Documentos contractuales; evaluación parcialmente generativa. \\
+\hline
+Este TFM & Petición de mesa a RFQ de IRS. & Esquema, validación Python y referencia por campo. & Petición breve, convenciones y evaluación extremo a extremo. \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia a partir de \textcite{roychoudhury2024gpt3ie}, \textcite{bechard2024structuredrag} y \textcite{mridul2025ai4contracts}.}
+\end{table}
 
 \section{Uso de arquitecturas multiagente en tareas complejas}
+\label{sec:arquitecturas_multiagente_estado_arte}
 
-Las arquitecturas multiagente han ganado relevancia como una forma de abordar tareas que resultan difíciles de resolver mediante una única llamada a un modelo. En lugar de concentrar toda la carga en un solo agente, este enfoque distribuye funciones entre varios componentes especializados, por ejemplo planificación, razonamiento, ejecución o validación.
+Las revisiones de agentes basados en LLM describen componentes de planificación, memoria, herramientas y cooperación, pero también dificultades de coordinación y evaluación \citep{wang2024agentsurvey,mialon2024augmented}. Patrones como orquestador-especialistas o evaluador-optimizador permiten dividir tareas y devolver diagnósticos, a cambio de más llamadas y fronteras de fallo \citep{anthropic-effective-agents}.
 
-Esta separación puede ser útil cuando el problema exige varios pasos, distintos tipos de conocimiento o controles intermedios. En estos casos, una arquitectura multiagente permite dividir el trabajo, acotar mejor cada subtarea y reducir parte de la complejidad que asumiría un único modelo actuando de forma monolítica.
+CIFQA constituye un antecedente financiero cercano. Separa interpretación, enrutado, extracción y planificación entre agentes, mientras herramientas Python realizan cálculos y reglas deterministas. En consultas sobre depósitos a plazo alcanza 95,54\,\% en preguntas intensivas en cálculo y 90,87\,\% global, por encima de baselines directos según sus autores \citep{parekh2026cifqa}. Sus ablaciones atribuyen parte de la mejora a búsquedas y cálculos deterministas.
 
-En el contexto de los LLM, este enfoque suele materializarse en patrones como orquestador-trabajadores, evaluador-optimizador o cadenas con validación intermedia. Su interés principal radica en que facilitan la modularidad, la especialización de instrucciones y la incorporación de mecanismos de supervisión o corrección durante el proceso \citep{anthropic-effective-agents}.
+CIFQA y este TFM comparten una idea: usar el modelo para comprender lenguaje y herramientas exactas para reglas verificables. Difieren en la tarea y en la salida. CIFQA responde consultas y ejecuta cálculos sobre depósitos; este trabajo genera una RFQ de derivados, valida su estructura contractual y compara modelos, costes y fidelidad de serialización. Además, CIFQA sí contrasta su arquitectura con baselines directos; esa comparación monolítica queda pendiente aquí.
 
-Sin embargo, estas arquitecturas también introducen costes adicionales. Aumentan la latencia, el número de llamadas al modelo y la complejidad de coordinación entre componentes. Además, si el diseño no está bien acotado, pueden propagar errores entre etapas o generar una falsa sensación de robustez. Por ello, su utilidad depende no solo de la capacidad de cada agente por separado, sino de la calidad del flujo completo y de los criterios de validación que articulan la interacción entre ellos.
+\begin{table}[H]
+\centering
+\small
+\caption{Comparación de arquitecturas cercanas}
+\label{tab:arquitecturas_cercanas}
+\begin{tabular}{|P{2.8cm}|P{3.5cm}|P{3.6cm}|P{3.8cm}|}
+\hline
+\textbf{Enfoque} & \textbf{Tarea} & \textbf{Componente determinista} & \textbf{Evaluación} \\
+\hline
+Llamada directa & Respuesta completa en un paso. & Validación posterior opcional. & Menor coste, menor atribución de errores. \\
+\hline
+CIFQA & Preguntas financieras con cálculo. & Búsqueda, fechas, fórmulas y reglas. & Baselines directos y ablaciones. \\
+\hline
+Este TFM & Petición de IRS a RFQ. & Validación, mapeo y métricas. & Seis modelos; sin baseline monolítico. \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia a partir de \textcite{parekh2026cifqa} y \textcite{wang2024agentsurvey}.}
+\end{table}
 
-En tareas como la conversión de lenguaje natural a una RFQ estructurada, una arquitectura multiagente puede resultar adecuada cuando se desea separar la interpretación general de la solicitud, la especialización en el producto y la generación final de la estructura de salida. Esta descomposición no elimina el riesgo de error, pero sí permite diseñar puntos de control más claros y comparar de forma más transparente un enfoque monolítico frente a uno secuencial o distribuido.
+La evidencia disponible no permite concluir que una red sea siempre mejor. Su utilidad depende de si la especialización, el control y la atribución de errores compensan el coste y la latencia. Esta es una limitación explícita del presente trabajo.
 
 \section{Aplicación de IA generativa en finanzas}
+\label{sec:ia_generativa_finanzas}
 
-La aplicación de modelos generativos en finanzas ha crecido de forma notable en los últimos años, impulsada por su capacidad para procesar grandes volúmenes de información, generar texto contextualizado y asistir en tareas analíticas que antes requerían una intervención manual intensiva. Este interés se ha extendido desde usos generales de análisis documental o asistencia operativa hasta casos más específicos relacionados con forecasting, análisis financiero, atención al cliente, cumplimiento normativo y apoyo a la toma de decisiones \citep{yordanova2025financialagents}.
+FinBERT mostró el valor de adaptar modelos al vocabulario financiero para análisis de sentimiento \citep{araci2019finbert}. BloombergGPT amplió esta línea con un modelo de 50.000 millones de parámetros entrenado sobre 363.000 millones de tokens financieros y 345.000 millones generales, y reportó mejoras en tareas financieras sin perder rendimiento general \citep[secs.~2--5]{wu2023bloomberggpt}. FinGPT propuso una alternativa abierta centrada en preparación de datos y adaptación ligera, con aplicaciones en asesoramiento y negociación algorítmica \citep{yang2023fingpt}.
 
-Dentro de este panorama, los LLM han despertado especial atención por su capacidad para interactuar con lenguaje natural, resumir documentos, extraer información relevante y producir salidas estructuradas o semiestructuradas. En el ámbito financiero, estas capacidades resultan atractivas porque muchos procesos combinan documentos no estructurados, reglas de negocio, terminología especializada y necesidad de respuesta rápida. Por ello, la IA generativa empieza a verse no solo como una herramienta de automatización, sino también como un apoyo para tareas cognitivas de mayor nivel \citep{yordanova2025financialagents}.
+Estos trabajos demuestran el valor de los datos y modelos especializados, pero se centran sobre todo en sentimiento, preguntas, investigación y apoyo a decisiones. No evalúan la transformación de una petición de derivados en una RFQ validada. Las revisiones del área señalan además problemas de acceso a datos, fiabilidad y evaluación \citep{shah2023finllms,yordanova2025financialagents}.
 
-No obstante, la aplicación de estos modelos en finanzas también presenta limitaciones importantes. La fiabilidad de la salida, la trazabilidad de las decisiones, la sensibilidad regulatoria del dominio y el riesgo de introducir errores plausibles pero incorrectos obligan a adoptar estos sistemas con cautela. En consecuencia, una parte creciente de la literatura y de las implementaciones prácticas insiste en combinar capacidades generativas con supervisión humana, validaciones adicionales y marcos de gobernanza apropiados \citep{smith2024qtcai,yordanova2025financialagents}.
+El lanzamiento comercial de ChatGPT for Financial Services refuerza tres tendencias sectoriales: integración de datos financieros, trazabilidad hasta la fuente y controles empresariales. Sus casos iniciales se concentran en banca de inversión e investigación, no en captura contractual de derivados. Por ello, confirma la relevancia práctica de la trazabilidad, pero no sustituye evidencia académica sobre exactitud \citep{openai2026financialservices}.
 
-En este contexto, la relevancia de la IA generativa para este trabajo no reside en sustituir el juicio financiero humano, sino en explorar hasta qué punto puede servir como capa intermedia entre descripciones lingüísticas flexibles y estructuras formales utilizables por sistemas posteriores. Esta orientación resulta especialmente adecuada en tareas donde la dificultad principal no está en el cálculo numérico en sí, sino en la correcta interpretación y formalización de la información de entrada.
+\begin{table}[H]
+\centering
+\small
+\caption{Líneas de LLM en finanzas y relación con el TFM}
+\label{tab:evolucion_llm_finanzas}
+\begin{tabular}{|P{3.0cm}|P{4.3cm}|P{5.5cm}|}
+\hline
+\textbf{Línea} & \textbf{Aportación} & \textbf{Hueco respecto a este problema} \\
+\hline
+FinBERT & Especialización financiera para sentimiento. & No genera contratos estructurados. \\
+\hline
+BloombergGPT & Modelo financiero de gran escala. & Evalúa tareas generales, no una RFQ validada. \\
+\hline
+FinGPT & Recursos abiertos y adaptación ligera. & Aplicaciones distintas de la captura contractual. \\
+\hline
+ChatGPT for Financial Services & Datos integrados, citas y gobierno empresarial. & Producto comercial orientado a análisis e investigación. \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia a partir de \textcite{araci2019finbert}, \textcite{wu2023bloomberggpt}, \textcite{yang2023fingpt} y \textcite{openai2026financialservices}.}
+\end{table}
 
 \section{Limitaciones de los enfoques actuales y oportunidad de investigación}
+\label{sec:oportunidad_investigacion}
 
-A pesar de los avances revisados, los enfoques actuales siguen mostrando limitaciones relevantes cuando se aplican a flujos reales de trabajo financiero. En particular, persiste una brecha entre la flexibilidad del lenguaje natural con la que se describen muchas operaciones y la precisión formal que exigen los sistemas posteriores de validación, representación y valoración.
+La literatura más cercana ya demuestra que los LLM pueden transformar contratos OTC en un esquema financiero y que una arquitectura con herramientas deterministas puede mejorar tareas financieras de cálculo. Sin embargo, quedan diferencias que justifican este trabajo.
 
-Los estándares de representación estructurada resuelven parte del problema, pero no la fase previa de interpretación. Del mismo modo, los LLM aportan capacidad para procesar texto libre, aunque siguen presentando riesgos de omisión, inferencia incorrecta y generación de contenido no justificado. Por su parte, las arquitecturas multiagente permiten repartir funciones y añadir controles intermedios, pero también aumentan la complejidad del sistema y no garantizan por sí mismas la corrección del resultado final.
+AI4Contracts parte de documentos contractuales y produce ISDA CDM mediante RAG y plantillas; CIFQA responde consultas de depósitos mediante herramientas de cálculo. Ninguno evalúa el recorrido concreto desde una petición breve de mesa hasta una RFQ de \textit{IRS}, con convenciones derivadas, casos no valorables y productos no soportados. Tampoco responden conjuntamente a cómo cambia el resultado entre modelos, cuánto cuesta cada configuración o si un agente puede reproducir la serialización de una referencia determinista.
 
-En consecuencia, el problema no consiste únicamente en elegir una tecnología concreta, sino en diseñar un flujo capaz de conectar tres requisitos que rara vez aparecen resueltos al mismo tiempo: comprensión de lenguaje natural, representación estructurada fiable y validación determinista posterior. Esta tensión se vuelve especialmente visible en contextos como las peticiones de \textit{pricing} de derivados, donde una descripción lingüística ambigua debe convertirse en una estructura formal suficientemente precisa para alimentar procesos posteriores sin introducir errores.
+La oportunidad se define, por tanto, mediante cuatro necesidades:
 
-En este punto aparece la oportunidad de investigación de este trabajo. Existe espacio para estudiar hasta qué punto un sistema basado en LLM, apoyado por una arquitectura de agentes y una capa de validación explícita, puede actuar como puente entre solicitudes financieras expresadas en lenguaje natural y representaciones estructuradas utilizables por un flujo cuantitativo posterior. Más que competir con motores de valoración o estándares de mercado consolidados, la contribución se sitúa en la capa intermedia de traducción, formalización y control, que es precisamente donde muchos procesos siguen dependiendo de intervención manual.
+\begin{enumerate}
+    \item interpretar lenguaje financiero breve y variable sin exigir un formulario;
+    \item conservar la estructura de las patas y las convenciones del producto;
+    \item detener mediante reglas deterministas las operaciones incompletas o incoherentes;
+    \item medir por etapa el contenido, el formato, la variabilidad, el coste y la latencia.
+\end{enumerate}
+
+La Tabla~\ref{tab:posicionamiento_trabajo} resume el posicionamiento.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Cobertura comparada del problema de investigación}
+\label{tab:posicionamiento_trabajo}
+\begin{tabular}{|P{3.2cm}|P{2.2cm}|P{2.2cm}|P{2.2cm}|P{2.2cm}|P{2.2cm}|}
+\hline
+\textbf{Enfoque} & \textbf{Texto libre} & \textbf{Derivados} & \textbf{Esquema} & \textbf{Validación exacta} & \textbf{Coste y modelos} \\
+\hline
+FpML / CDM & No & Sí & Sí & Parcial & No \\
+\hline
+LLM financiero general & Sí & Parcial & No & No & Parcial \\
+\hline
+AI4Contracts & Sí & Sí & Sí & Sintaxis y evaluación asistida & No comparativa amplia \\
+\hline
+CIFQA & Sí & No, depósitos & Salida de consulta & Sí, herramientas & Baselines y ablación \\
+\hline
+Este TFM & Sí & Sí, IRS & Sí, RFQ & Sí, Python & Seis modelos, coste y latencia \\
+\hline
+\end{tabular}
+\floatfoot{Fuente: elaboración propia a partir de las alternativas revisadas.}
+\end{table}
+
+La aportación se sitúa en esa intersección y no pretende sustituir un estándar, un modelo fundacional ni un motor de valoración. Construye y evalúa una capa de traducción controlada para un producto concreto. Su principal límite frente a la literatura es no disponer de una batería externa ni de un baseline monolítico, aspectos que se mantienen como líneas futuras.

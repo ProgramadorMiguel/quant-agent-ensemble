@@ -56,7 +56,7 @@ controlada: mismos casos, mismo modelo, una frase de diferencia.
 
 ## 3. Un evaluador puede ser estable, reproducible y engañoso
 
-**Siete defectos de instrumentación** a lo largo del trabajo produjeron cifras
+**Ocho defectos de instrumentación** a lo largo del trabajo produjeron cifras
 internamente consistentes y falsas. En casi todos, **una diferencia de tratamiento
 entre las dos ramas de una comparación se leyó como un fallo del modelo**:
 
@@ -69,12 +69,19 @@ entre las dos ramas de una comparación se leyó como un fallo del modelo**:
 | 5 | Diferencial por omisión no aplicado al caso dorado | 1 alucinación por caso | Misma asimetría, en la otra rama |
 | 6 | Caso de fechas contradictorias clasificado como producto no soportado | fallo aparente del orquestador | Es un IRS legítimo con datos incoherentes: lo detiene el validador, no la puerta de entrada |
 | 7 | Tarifa corregida después de medir una tanda | coste de `sonnet` inflado un 50 % | El coste se calcula en la llamada y se guarda; corregir el fichero de tarifas no corrige lo ya medido |
+| 8 | Un fallo posterior sobrescribía la clasificación previa | clasificación de `haiku` registrada como 13/23 en vez de 19/23 | Un `AgentOutputError` del especialista sustituía por `MALFORMED` una clasificación `IRS` correcta del orquestador |
 
 El séptimo es de otra clase y conviene señalarlo aparte: **no afecta a la medición
 de acierto sino a la de coste**, y su causa no es una asimetría entre ramas sino
 que una cifra derivada se persiste en lugar de recalcularse. Se resolvió con
 `tools/recompute_costs.py`, que la rehace desde los tokens registrados: son un
 hecho de la ejecución y no cambian cuando cambia una tarifa.
+
+Los siete primeros defectos se corrigieron en el código. El octavo se detectó
+cuando el desarrollo ya estaba cerrado y se resolvió reconstruyendo la
+clasificación de `haiku` desde las respuestas originales del orquestador guardadas
+en `api_calls`. Sin esa telemetría, se habría publicado 13/23 en clasificación en
+lugar del resultado real, 19/23.
 
 **La tesis:** cuatro tandas consecutivas arrojaron 0 % de fidelidad de
 serialización con plena consistencia interna. Ninguna cantidad de repeticiones ni
@@ -202,14 +209,14 @@ subiría sustancialmente.
 
 ## 9. Cuatro de seis modelos resuelven la tarea sin fallos
 
-| Modelo | Proveedor | Acierto | Coste/caso válido | Latencia p50 |
+| Modelo | Proveedor | Validación / clasificación | Coste/caso válido | Latencia p50 |
 |---|---|---|---|---|
 | `gpt-5.6-terra` | OpenAI | **23/23** | 0,0102 $ | 9.011 ms |
 | `gpt-5.6-sol` | OpenAI | **23/23** | 0,0182 $ | 11.029 ms |
-| `claude-sonnet-5` | Anthropic | **23/23** | 0,0601 $ | 14.405 ms |
+| `claude-sonnet-5` | Anthropic | **23/23** | 0,0401 $ | 14.405 ms |
 | `claude-opus-5` | Anthropic | **23/23** | 0,0904 $ | 15.252 ms |
 | `gpt-5.6-luna` | OpenAI | 22/23 | **0,0013 $** | 7.153 ms |
-| `claude-haiku-4-5` | Anthropic | 13/23 | 0,0203 $ | **3.475 ms** |
+| `claude-haiku-4-5` | Anthropic | 13/23 en validación; 19/23 en clasificación reconstruida | 0,0203 $ | **3.475 ms** |
 
 **La tesis:** la tarea es alcanzable con la generación actual de modelos, de modo
 que la elección deja de ser de capacidad y pasa a ser económica. **Recomendación
