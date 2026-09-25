@@ -17,7 +17,7 @@ El objetivo del trabajo era diseñar, implementar y evaluar un sistema capaz de 
 
     Los agentes interpretan fechas relativas, abreviaturas, direcciones y convenciones financieras. Después, el validador comprueba la integridad y la coherencia de la operación, y el mapeador determinista genera la salida final. Esta separación evitó emitir operaciones incompletas o incompatibles y mantuvo las reglas auditables. El agente proto confirmó que los modelos pueden serializar la estructura, pero también que no resulta necesario emplear una llamada probabilística para una transformación que el código realiza de forma exacta.
 
-    
+
     \item \textbf{La calidad de la especificación y el cumplimiento del formato forman parte del rendimiento.}
 
     Con una instrucción ambigua, \texttt{gpt-5.6-sol} obtuvo 19/23; tras corregir una frase alcanzó 23/23 sin cambiar el modelo ni los casos. El bucle de autocorrección rescató tres extracciones bajo esa especificación ambigua, pero no pudo corregir el falso positivo de \texttt{gpt-5.6-luna} porque la clasificación queda fuera de su alcance. Por otra parte, \texttt{claude-haiku-4-5} obtuvo 13/23 en validación y siete de sus fallos estuvieron relacionados con salidas mal formadas del especialista. En una cadena automática, una respuesta financieramente comprensible no es correcta si el componente siguiente no puede procesarla.
